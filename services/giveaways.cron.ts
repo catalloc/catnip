@@ -1,0 +1,25 @@
+/**
+ * services/giveaways.cron.ts
+ *
+ * Cron job that checks for expired giveaways and ends them.
+ * Schedule in Val Town to run every 1-5 minutes.
+ */
+
+import { kv } from "../discord/persistence/kv.ts";
+import { type GiveawayConfig, endGiveaway } from "../discord/interactions/commands/giveaway.ts";
+
+export default async function () {
+  const entries = await kv.list("giveaway:");
+
+  for (const entry of entries) {
+    const config = entry.value as GiveawayConfig;
+    if (config.ended || config.endsAt > Date.now()) continue;
+
+    try {
+      const guildId = entry.key.replace("giveaway:", "");
+      await endGiveaway(guildId, config);
+    } catch (err) {
+      console.error(`Failed to end giveaway ${entry.key}:`, err);
+    }
+  }
+}

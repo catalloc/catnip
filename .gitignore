@@ -1,0 +1,26 @@
+# Environment variables
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+*:Zone.Identifier
+
+# Editor directories
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
+
+# Val Town
+.vt/
+
+# Deno
+.deno/
+
+# Node (in case of compatibility layers)
+node_modules/
