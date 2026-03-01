@@ -21,20 +21,28 @@ async function deliverBatch(
   await Promise.allSettled(
     batch.map(async (entry) => {
       const msg = entry.value as ScheduledMessage;
+
+      // Atomically claim this message — if another cron run already claimed it, skip
+      const claimed = await kv.claimDelete(entry.key);
+      if (!claimed) return;
+
       try {
         const result = await discordBotFetch("POST", `channels/${msg.channelId}/messages`, {
           content: msg.content,
         });
         if (result.ok) {
-          await kv.delete(entry.key);
+          // Already deleted by claimDelete — nothing to do
         } else if (result.status && PERMANENT_FAILURE_CODES.includes(result.status)) {
-          console.warn(`Scheduled message ${entry.key} deleted: channel inaccessible (${result.status})`);
-          await kv.delete(entry.key);
+          console.warn(`Scheduled message ${entry.key} dropped: channel inaccessible (${result.status})`);
         } else {
           console.error(`Failed to send scheduled message ${entry.key}: ${result.error}`);
+          // Transient failure — re-insert so it's retried next cron run
+          await kv.set(entry.key, msg, Date.now());
         }
       } catch (err) {
         console.error(`Failed to send scheduled message ${entry.key}:`, err);
+        // Transient failure — re-insert so it's retried next cron run
+        await kv.set(entry.key, msg, Date.now());
       }
     }),
   );

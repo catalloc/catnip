@@ -64,6 +64,20 @@ export const kv = {
     });
   },
 
+  /**
+   * Atomically delete a key and return whether it actually existed.
+   * Only one concurrent caller can "win" the delete — use this as a
+   * claim mechanism so overlapping cron runs don't double-process items.
+   */
+  async claimDelete(key: string): Promise<boolean> {
+    await ensureTable();
+    const result = await sqlite.execute({
+      sql: `DELETE FROM ${TABLE} WHERE key = ?`,
+      args: [key],
+    });
+    return result.rowsAffected > 0;
+  },
+
   async list(prefix?: string): Promise<Array<{ key: string; value: unknown }>> {
     await ensureTable();
     const result = prefix
@@ -140,15 +154,16 @@ export const kv = {
     }
     // Final fallback: unconditional write (better than losing the operation)
     const result = await sqlite.execute({
-      sql: `SELECT value FROM ${TABLE} WHERE key = ?`,
+      sql: `SELECT value, due_at FROM ${TABLE} WHERE key = ?`,
       args: [key],
     });
     const raw = result.rows.length > 0 ? (result.rows[0][0] as string) : null;
+    const existingDueAt = result.rows.length > 0 ? (result.rows[0][1] as number | null) : null;
     const current = raw !== null ? safeParse<T>(raw) : null;
     const next = fn(current);
     await sqlite.execute({
-      sql: `INSERT OR REPLACE INTO ${TABLE} (key, value) VALUES (?, ?)`,
-      args: [key, JSON.stringify(next)],
+      sql: `INSERT OR REPLACE INTO ${TABLE} (key, value, due_at) VALUES (?, ?, ?)`,
+      args: [key, JSON.stringify(next), existingDueAt ?? null],
     });
     return next;
   },

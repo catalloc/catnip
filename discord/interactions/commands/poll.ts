@@ -91,7 +91,11 @@ export function buildPollComponents(guildId: string, options: string[], ended = 
   return rows;
 }
 
-export async function endPoll(guildId: string, config: PollConfig): Promise<void> {
+export async function endPoll(guildId: string, _config: PollConfig): Promise<void> {
+  // Re-read from KV to close the race window between cron auto-end and manual /poll end
+  const config = await kv.get<PollConfig>(pollKey(guildId));
+  if (!config || config.ended) return;
+
   config.ended = true;
   await kv.set(pollKey(guildId), config, Date.now() + CLEANUP_DELAY_MS);
 

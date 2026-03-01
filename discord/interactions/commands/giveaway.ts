@@ -88,7 +88,11 @@ export function pickWinners(entrants: string[], count: number): string[] {
   return winners;
 }
 
-export async function endGiveaway(guildId: string, config: GiveawayConfig): Promise<void> {
+export async function endGiveaway(guildId: string, _config: GiveawayConfig): Promise<void> {
+  // Re-read from KV to close the race window between cron auto-end and manual /giveaway end
+  const config = await kv.get<GiveawayConfig>(giveawayKey(guildId));
+  if (!config || config.ended) return;
+
   const winners = pickWinners(config.entrants, config.winnersCount);
   config.ended = true;
   config.winners = winners;

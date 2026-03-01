@@ -16,8 +16,9 @@ export default async function () {
 
     if (config.ended) {
       // Past the 24h grace period — clean up dead data
+      // Use claimDelete to avoid redundant deletes across overlapping crons
       try {
-        await kv.delete(entry.key);
+        await kv.claimDelete(entry.key);
       } catch (err) {
         console.error(`Failed to clean up ended giveaway ${entry.key}:`, err);
       }

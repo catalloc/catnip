@@ -20,20 +20,28 @@ async function deliverBatch(
   await Promise.allSettled(
     batch.map(async (entry) => {
       const reminder = entry.value as Reminder;
+
+      // Atomically claim this reminder — if another cron run already claimed it, skip
+      const claimed = await kv.claimDelete(entry.key);
+      if (!claimed) return;
+
       try {
         const result = await discordBotFetch("POST", `channels/${reminder.channelId}/messages`, {
           content: `\u23F0 <@${reminder.userId}>, reminder: ${reminder.message}`,
         });
         if (result.ok) {
-          await kv.delete(entry.key);
+          // Already deleted by claimDelete — nothing to do
         } else if (result.status && PERMANENT_FAILURE_CODES.includes(result.status)) {
-          console.warn(`Reminder ${entry.key} deleted: channel inaccessible (${result.status})`);
-          await kv.delete(entry.key);
+          console.warn(`Reminder ${entry.key} dropped: channel inaccessible (${result.status})`);
         } else {
           console.error(`Failed to deliver reminder ${entry.key}: ${result.error}`);
+          // Transient failure — re-insert so it's retried next cron run
+          await kv.set(entry.key, reminder, Date.now());
         }
       } catch (err) {
         console.error(`Failed to deliver reminder ${entry.key}:`, err);
+        // Transient failure — re-insert so it's retried next cron run
+        await kv.set(entry.key, reminder, Date.now());
       }
     }),
   );
