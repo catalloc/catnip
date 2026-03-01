@@ -5,6 +5,7 @@
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
+import { secureRandomIndex } from "../../helpers/crypto.ts";
 
 const DICE_PATTERN = /^(\d+)d(\d+)([+-]\d+)?$/i;
 const MAX_DICE = 20;
@@ -54,7 +55,7 @@ export default defineCommand({
       return { success: false, error: `Die size must be between d${MIN_SIDES} and d${MAX_SIDES}.` };
     }
 
-    const rolls = Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
+    const rolls = Array.from({ length: count }, () => secureRandomIndex(sides) + 1);
     const sum = rolls.reduce((a, b) => a + b, 0);
     const total = sum + modifier;
 

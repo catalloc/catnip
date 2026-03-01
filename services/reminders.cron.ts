@@ -9,21 +9,30 @@ import { kv } from "../discord/persistence/kv.ts";
 import { discordBotFetch } from "../discord/discord-api.ts";
 import type { Reminder } from "../discord/interactions/commands/remind.ts";
 
+const CONCURRENCY = 5;
+
+async function deliverBatch(
+  batch: Array<{ key: string; value: unknown }>,
+): Promise<void> {
+  await Promise.allSettled(
+    batch.map(async (entry) => {
+      const reminder = entry.value as Reminder;
+      try {
+        await discordBotFetch("POST", `channels/${reminder.channelId}/messages`, {
+          content: `\u23F0 <@${reminder.userId}>, reminder: ${reminder.message}`,
+        });
+        await kv.delete(entry.key);
+      } catch (err) {
+        console.error(`Failed to deliver reminder ${entry.key}:`, err);
+      }
+    }),
+  );
+}
+
 export default async function () {
-  const entries = await kv.list("reminder:");
-  const now = Date.now();
+  const due = await kv.listDue(Date.now(), "reminder:");
 
-  for (const entry of entries) {
-    const reminder = entry.value as Reminder;
-    if (reminder.dueAt > now) continue;
-
-    try {
-      await discordBotFetch("POST", `channels/${reminder.channelId}/messages`, {
-        content: `\u23F0 <@${reminder.userId}>, reminder: ${reminder.message}`,
-      });
-      await kv.delete(entry.key);
-    } catch (err) {
-      console.error(`Failed to deliver reminder ${entry.key}:`, err);
-    }
+  for (let i = 0; i < due.length; i += CONCURRENCY) {
+    await deliverBatch(due.slice(i, i + CONCURRENCY));
   }
 }

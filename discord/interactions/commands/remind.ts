@@ -61,7 +61,7 @@ export default defineCommand({
 
     const now = Date.now();
     const dueAt = now + ms;
-    const randomSuffix = Math.random().toString(36).substring(2, 6);
+    const randomSuffix = crypto.randomUUID().slice(0, 8);
 
     const reminder: Reminder = {
       userId,
@@ -72,7 +72,7 @@ export default defineCommand({
       createdAt: now,
     };
 
-    await kv.set(`reminder:${userId}:${guildId}:${now}-${randomSuffix}`, reminder);
+    await kv.set(`reminder:${userId}:${guildId}:${now}-${randomSuffix}`, reminder, dueAt);
 
     const unixSeconds = Math.floor(dueAt / 1000);
     return { success: true, message: `Reminder set! I'll remind you <t:${unixSeconds}:R>.` };

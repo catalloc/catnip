@@ -10,21 +10,30 @@ import { discordBotFetch } from "../discord/discord-api.ts";
 import type { ScheduledMessage } from "../discord/interactions/commands/schedule.ts";
 import { KV_PREFIX } from "../discord/interactions/commands/schedule.ts";
 
+const CONCURRENCY = 5;
+
+async function deliverBatch(
+  batch: Array<{ key: string; value: unknown }>,
+): Promise<void> {
+  await Promise.allSettled(
+    batch.map(async (entry) => {
+      const msg = entry.value as ScheduledMessage;
+      try {
+        await discordBotFetch("POST", `channels/${msg.channelId}/messages`, {
+          content: msg.content,
+        });
+        await kv.delete(entry.key);
+      } catch (err) {
+        console.error(`Failed to send scheduled message ${entry.key}:`, err);
+      }
+    }),
+  );
+}
+
 export default async function () {
-  const entries = await kv.list(KV_PREFIX);
-  const now = Date.now();
+  const due = await kv.listDue(Date.now(), KV_PREFIX);
 
-  for (const entry of entries) {
-    const msg = entry.value as ScheduledMessage;
-    if (msg.sendAt > now) continue;
-
-    try {
-      await discordBotFetch("POST", `channels/${msg.channelId}/messages`, {
-        content: msg.content,
-      });
-      await kv.delete(entry.key);
-    } catch (err) {
-      console.error(`Failed to send scheduled message ${entry.key}:`, err);
-    }
+  for (let i = 0; i < due.length; i += CONCURRENCY) {
+    await deliverBatch(due.slice(i, i + CONCURRENCY));
   }
 }

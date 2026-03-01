@@ -255,7 +255,8 @@ export default defineCommand({
 
         // If 404 (message deleted), fall through to POST
         if (patch.status !== 404) {
-          return { success: false, error: `Failed to update panel: ${patch.error}` };
+          console.error(`[react-roles] Failed to update panel: ${patch.error}`);
+          return { success: false, error: "Failed to update panel. The bot may lack permissions in that channel." };
         }
       }
 
@@ -267,7 +268,8 @@ export default defineCommand({
       );
 
       if (!post.ok) {
-        return { success: false, error: `Failed to send panel: ${post.error}` };
+        console.error(`[react-roles] Failed to send panel: ${post.error}`);
+        return { success: false, error: "Failed to send panel. The bot may lack permissions in that channel." };
       }
 
       config.channelId = channelId;

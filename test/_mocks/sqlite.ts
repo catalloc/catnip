@@ -6,6 +6,7 @@
  */
 
 const store = new Map<string, string>();
+const dueAtStore = new Map<string, number | null>();
 
 function parseQuery(input: string | { sql: string; args?: any[] }) {
   const sql = typeof input === "string" ? input : input.sql;
@@ -17,8 +18,8 @@ export const sqlite = {
   async execute(input: string | { sql: string; args?: any[] }) {
     const { sql, args } = parseQuery(input);
 
-    // CREATE TABLE
-    if (sql.toUpperCase().startsWith("CREATE TABLE")) {
+    // CREATE TABLE / CREATE INDEX
+    if (sql.toUpperCase().startsWith("CREATE TABLE") || sql.toUpperCase().startsWith("CREATE INDEX")) {
       return { rows: [], rowsAffected: 0, columns: [] };
     }
 
@@ -31,6 +32,33 @@ export const sqlite = {
         rowsAffected: 0,
         columns: ["value"],
       };
+    }
+
+    // SELECT key, value FROM ... WHERE due_at IS NOT NULL AND due_at <= ? AND key LIKE ?
+    if (/SELECT\s+key,\s*value\s+FROM/i.test(sql) && sql.includes("due_at") && sql.includes("LIKE ?")) {
+      const now = args[0] as number;
+      const pattern = args[1] as string;
+      const prefix = pattern.replace(/%$/, "");
+      const rows = [...store.entries()]
+        .filter(([k]) => k.startsWith(prefix))
+        .filter(([k]) => {
+          const dueAt = dueAtStore.get(k);
+          return dueAt !== null && dueAt !== undefined && dueAt <= now;
+        })
+        .map(([k, v]) => [k, v]);
+      return { rows, rowsAffected: 0, columns: ["key", "value"] };
+    }
+
+    // SELECT key, value FROM ... WHERE due_at IS NOT NULL AND due_at <= ?
+    if (/SELECT\s+key,\s*value\s+FROM/i.test(sql) && sql.includes("due_at") && !sql.includes("LIKE")) {
+      const now = args[0] as number;
+      const rows = [...store.entries()]
+        .filter(([k]) => {
+          const dueAt = dueAtStore.get(k);
+          return dueAt !== null && dueAt !== undefined && dueAt <= now;
+        })
+        .map(([k, v]) => [k, v]);
+      return { rows, rowsAffected: 0, columns: ["key", "value"] };
     }
 
     // SELECT key, value FROM ... WHERE key LIKE ?
@@ -54,6 +82,7 @@ export const sqlite = {
       const key = args[0] as string;
       const value = args[1] as string;
       store.set(key, value);
+      dueAtStore.set(key, args.length > 2 ? (args[2] as number | null) : null);
       return { rows: [], rowsAffected: 1, columns: [] };
     }
 
@@ -63,6 +92,7 @@ export const sqlite = {
       const value = args[1] as string;
       if (!store.has(key)) {
         store.set(key, value);
+        dueAtStore.set(key, args.length > 2 ? (args[2] as number | null) : null);
         return { rows: [], rowsAffected: 1, columns: [] };
       }
       return { rows: [], rowsAffected: 0, columns: [] };
@@ -85,6 +115,7 @@ export const sqlite = {
       const key = args[0] as string;
       const had = store.has(key);
       store.delete(key);
+      dueAtStore.delete(key);
       return { rows: [], rowsAffected: had ? 1 : 0, columns: [] };
     }
 
@@ -93,5 +124,6 @@ export const sqlite = {
 
   _reset() {
     store.clear();
+    dueAtStore.clear();
   },
 };

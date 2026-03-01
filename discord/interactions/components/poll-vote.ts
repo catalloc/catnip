@@ -25,14 +25,20 @@ export default defineComponent({
   async execute({ customId, guildId, userId }) {
     // Parse: poll-vote:guildId:optionIndex
     const parts = customId.split(":");
+    if (parts.length < 3) {
+      return { success: false, error: "Invalid vote button." };
+    }
     const optionIndex = parseInt(parts[2], 10);
+    if (isNaN(optionIndex) || optionIndex < 0) {
+      return { success: false, error: "Invalid option." };
+    }
 
     // Pre-flight check before atomic update
     const existing = await kv.get<PollConfig>(pollKey(guildId));
     if (!existing || existing.ended) {
       return { success: false, error: "This poll has ended." };
     }
-    if (isNaN(optionIndex) || optionIndex < 0 || optionIndex >= existing.options.length) {
+    if (optionIndex >= existing.options.length) {
       return { success: false, error: "Invalid option." };
     }
 

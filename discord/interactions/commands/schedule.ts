@@ -114,7 +114,7 @@ export default defineCommand({
 
       const now = Date.now();
       const sendAt = now + ms;
-      const randomSuffix = Math.random().toString(36).substring(2, 6);
+      const randomSuffix = crypto.randomUUID().slice(0, 8);
       const key = `${kvPrefix(guildId)}${now}-${randomSuffix}`;
 
       const msg: ScheduledMessage = {
@@ -126,7 +126,7 @@ export default defineCommand({
         createdAt: now,
       };
 
-      await kv.set(key, msg);
+      await kv.set(key, msg, sendAt);
 
       const unixSeconds = Math.floor(sendAt / 1000);
       return { success: true, message: `Message scheduled for <#${channelId}> <t:${unixSeconds}:R>.` };

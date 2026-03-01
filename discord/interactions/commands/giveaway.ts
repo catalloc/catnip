@@ -204,7 +204,8 @@ export default defineCommand({
       });
 
       if (!post.ok) {
-        return { success: false, error: `Failed to post giveaway: ${post.error}` };
+        console.error(`[giveaway] Failed to post: ${post.error}`);
+        return { success: false, error: "Failed to post giveaway. The bot may lack permissions in that channel." };
       }
 
       config.messageId = post.data.id;

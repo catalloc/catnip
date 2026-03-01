@@ -3,6 +3,10 @@
  *
  * Minimal key-value store wrapping Val Town SQLite.
  * Auto-creates the table on first use.
+ *
+ * Supports an optional `due_at` column (epoch ms) for time-based queries,
+ * enabling cron jobs to fetch only due items via `listDue()` instead of
+ * loading all entries and filtering in JS.
  */
 
 import { sqlite } from "https://esm.town/v/std/sqlite/main.ts";
@@ -13,7 +17,10 @@ let initialized = false;
 async function ensureTable(): Promise<void> {
   if (initialized) return;
   await sqlite.execute(
-    `CREATE TABLE IF NOT EXISTS ${TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS ${TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL, due_at INTEGER)`,
+  );
+  await sqlite.execute(
+    `CREATE INDEX IF NOT EXISTS idx_kv_due_at ON ${TABLE} (due_at) WHERE due_at IS NOT NULL`,
   );
   initialized = true;
 }
@@ -37,11 +44,11 @@ export const kv = {
     return safeParse<T>(result.rows[0][0] as string);
   },
 
-  async set(key: string, value: unknown): Promise<void> {
+  async set(key: string, value: unknown, dueAt?: number): Promise<void> {
     await ensureTable();
     await sqlite.execute({
-      sql: `INSERT OR REPLACE INTO ${TABLE} (key, value) VALUES (?, ?)`,
-      args: [key, JSON.stringify(value)],
+      sql: `INSERT OR REPLACE INTO ${TABLE} (key, value, due_at) VALUES (?, ?, ?)`,
+      args: [key, JSON.stringify(value), dueAt ?? null],
     });
   },
 
@@ -61,6 +68,32 @@ export const kv = {
           args: [`${prefix}%`],
         })
       : await sqlite.execute(`SELECT key, value FROM ${TABLE}`);
+    const entries: Array<{ key: string; value: unknown }> = [];
+    for (const row of result.rows) {
+      const parsed = safeParse(row[1] as string);
+      if (parsed !== null) {
+        entries.push({ key: row[0] as string, value: parsed });
+      }
+    }
+    return entries;
+  },
+
+  /**
+   * List entries whose `due_at` is at or before the given timestamp.
+   * Uses the indexed due_at column — much faster than list() + JS filter.
+   * Optionally filtered by key prefix.
+   */
+  async listDue(now: number, prefix?: string): Promise<Array<{ key: string; value: unknown }>> {
+    await ensureTable();
+    const result = prefix
+      ? await sqlite.execute({
+          sql: `SELECT key, value FROM ${TABLE} WHERE due_at IS NOT NULL AND due_at <= ? AND key LIKE ?`,
+          args: [now, `${prefix}%`],
+        })
+      : await sqlite.execute({
+          sql: `SELECT key, value FROM ${TABLE} WHERE due_at IS NOT NULL AND due_at <= ?`,
+          args: [now],
+        });
     const entries: Array<{ key: string; value: unknown }> = [];
     for (const row of result.rows) {
       const parsed = safeParse(row[1] as string);

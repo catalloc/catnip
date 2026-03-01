@@ -162,13 +162,17 @@ export default defineCommand({
       const channelId = options.channel as string;
       const durationStr = options.duration as string | undefined;
 
-      // Parse options
+      // Parse and validate options
       const choices = optionsStr.split(",").map((s) => s.trim()).filter(Boolean);
       if (choices.length < 2) {
         return { success: false, error: "Provide at least 2 comma-separated options." };
       }
       if (choices.length > 10) {
         return { success: false, error: "Maximum 10 options allowed." };
+      }
+      const uniqueChoices = new Set(choices.map((c) => c.toLowerCase()));
+      if (uniqueChoices.size !== choices.length) {
+        return { success: false, error: "Duplicate options are not allowed." };
       }
 
       // Parse optional duration
@@ -205,7 +209,8 @@ export default defineCommand({
       });
 
       if (!post.ok) {
-        return { success: false, error: `Failed to post poll: ${post.error}` };
+        console.error(`[poll] Failed to post: ${post.error}`);
+        return { success: false, error: "Failed to post poll. The bot may lack permissions in that channel." };
       }
 
       config.messageId = post.data.id;
