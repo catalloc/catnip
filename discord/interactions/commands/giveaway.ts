@@ -88,15 +88,20 @@ export function pickWinners(entrants: string[], count: number): string[] {
   return winners;
 }
 
-export async function endGiveaway(guildId: string, _config: GiveawayConfig): Promise<void> {
-  // Re-read from KV to close the race window between cron auto-end and manual /giveaway end
-  const config = await kv.get<GiveawayConfig>(giveawayKey(guildId));
-  if (!config || config.ended) return;
+export async function endGiveaway(guildId: string): Promise<void> {
+  const key = giveawayKey(guildId);
 
-  const winners = pickWinners(config.entrants, config.winnersCount);
-  config.ended = true;
-  config.winners = winners;
-  await kv.set(giveawayKey(guildId), config, Date.now() + CLEANUP_DELAY_MS);
+  // Atomically claim the giveaway — only one caller can transition ended to true
+  const config = await kv.claimUpdate<GiveawayConfig>(key, (current) => {
+    if (current.ended) return null; // already ended, don't claim
+    const winners = pickWinners(current.entrants, current.winnersCount);
+    return { ...current, ended: true, winners };
+  });
+
+  if (!config) return; // no giveaway, already ended, or lost race
+
+  // We exclusively own the ended state — safe to update due_at for delayed cleanup
+  await kv.set(key, config, Date.now() + CLEANUP_DELAY_MS);
 
   // Update panel embed
   await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
@@ -105,8 +110,8 @@ export async function endGiveaway(guildId: string, _config: GiveawayConfig): Pro
   });
 
   // Announce winners
-  const winnerText = winners.length > 0
-    ? `Congratulations ${winners.map((id) => `<@${id}>`).join(", ")}! You won **${config.prize}**!`
+  const winnerText = config.winners!.length > 0
+    ? `Congratulations ${config.winners!.map((id) => `<@${id}>`).join(", ")}! You won **${config.prize}**!`
     : `No one entered the giveaway for **${config.prize}**.`;
   await discordBotFetch("POST", `channels/${config.channelId}/messages`, {
     content: `🎉 **Giveaway Ended!**\n${winnerText}`,
@@ -224,7 +229,7 @@ export default defineCommand({
         return { success: false, error: "No active giveaway to end." };
       }
 
-      await endGiveaway(guildId, config);
+      await endGiveaway(guildId);
       return { success: true, message: "Giveaway ended! Winners have been announced." };
     }
 

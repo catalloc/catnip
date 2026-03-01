@@ -76,29 +76,36 @@ function extractMemberData(payload: Record<string, unknown>): {
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 30;
-const requestTimestamps: number[] = [];
 
-function isRateLimited(): boolean {
-  const now = Date.now();
-  // Evict timestamps outside the window
-  while (requestTimestamps.length > 0 && requestTimestamps[0] <= now - RATE_LIMIT_WINDOW_MS) {
-    requestTimestamps.shift();
-  }
-  if (requestTimestamps.length >= RATE_LIMIT_MAX) {
-    return true;
-  }
-  requestTimestamps.push(now);
-  return false;
+interface RateLimitState {
+  count: number;
+  windowStart: number;
 }
 
-export const _internals = { requestTimestamps, isRateLimited };
+async function isRateLimited(): Promise<boolean> {
+  let limited = false;
+  await kv.update<RateLimitState>("ratelimit:patreon", (current) => {
+    const now = Date.now();
+    if (!current || now - current.windowStart >= RATE_LIMIT_WINDOW_MS) {
+      return { count: 1, windowStart: now };
+    }
+    if (current.count >= RATE_LIMIT_MAX) {
+      limited = true;
+      return current;
+    }
+    return { count: current.count + 1, windowStart: current.windowStart };
+  });
+  return limited;
+}
+
+export const _internals = { isRateLimited };
 
 /**
  * Handle an incoming Patreon webhook request.
  * POST /patreon/webhook
  */
 export async function handlePatreonWebhook(req: Request): Promise<Response> {
-  if (isRateLimited()) {
+  if (await isRateLimited()) {
     return new Response(JSON.stringify({ error: "Too many requests" }), {
       status: 429,
       headers: { "Content-Type": "application/json", "Retry-After": "60" },

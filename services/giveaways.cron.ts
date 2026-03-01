@@ -29,6 +29,7 @@ export default async function () {
   await Promise.allSettled(entries.map(async (entry) => {
     const config = entry.value as GiveawayConfig;
 
+    // Ended giveaways past their cleanup delay — delete the KV row
     if (config.ended) {
       try {
         await kv.claimDelete(entry.key);
@@ -38,9 +39,10 @@ export default async function () {
       return;
     }
 
+    // Active giveaway whose due_at has arrived — endGiveaway handles atomicity
     try {
       const guildId = entry.key.replace("giveaway:", "");
-      await withTimeout(endGiveaway(guildId, config), ITEM_TIMEOUT_MS);
+      await withTimeout(endGiveaway(guildId), ITEM_TIMEOUT_MS);
     } catch (err) {
       console.error(`Failed to end giveaway ${entry.key}:`, err);
     }

@@ -91,13 +91,19 @@ export function buildPollComponents(guildId: string, options: string[], ended = 
   return rows;
 }
 
-export async function endPoll(guildId: string, _config: PollConfig): Promise<void> {
-  // Re-read from KV to close the race window between cron auto-end and manual /poll end
-  const config = await kv.get<PollConfig>(pollKey(guildId));
-  if (!config || config.ended) return;
+export async function endPoll(guildId: string): Promise<void> {
+  const key = pollKey(guildId);
 
-  config.ended = true;
-  await kv.set(pollKey(guildId), config, Date.now() + CLEANUP_DELAY_MS);
+  // Atomically claim the poll — only one caller can transition ended to true
+  const config = await kv.claimUpdate<PollConfig>(key, (current) => {
+    if (current.ended) return null; // already ended, don't claim
+    return { ...current, ended: true };
+  });
+
+  if (!config) return; // no poll, already ended, or lost race
+
+  // We exclusively own the ended state — safe to update due_at for delayed cleanup
+  await kv.set(key, config, Date.now() + CLEANUP_DELAY_MS);
 
   await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
     embeds: [buildPollEmbed(config, true)],
@@ -235,7 +241,7 @@ export default defineCommand({
         return { success: false, error: "No active poll to end." };
       }
 
-      await endPoll(guildId, config);
+      await endPoll(guildId);
       const totalVotes = Object.keys(config.votes).length;
       return { success: true, message: `Poll ended! ${totalVotes} total vote${totalVotes !== 1 ? "s" : ""}.` };
     }

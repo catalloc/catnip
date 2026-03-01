@@ -154,13 +154,13 @@ export const kv = {
 
       if (writeResult.rowsAffected > 0) return next;
     }
-    // Final fallback: unconditional write (better than losing the operation)
+    // All CAS retries exhausted — unconditional fallback (better than losing the operation)
     const result = await sqlite.execute({
       sql: `SELECT value, due_at FROM ${TABLE} WHERE key = ?`,
       args: [key],
     });
     const raw = result.rows.length > 0 ? (result.rows[0][0] as string) : null;
-    const existingDueAt = result.rows.length > 0 ? (result.rows[0][1] as number | null) : null;
+    const existingDueAt = result.rows.length > 0 ? (result.rows[0][1] as unknown as number | null) : null;
     const current = raw !== null ? safeParse<T>(raw) : null;
     const next = fn(current);
     await sqlite.execute({
@@ -168,6 +168,41 @@ export const kv = {
       args: [key, JSON.stringify(next), existingDueAt ?? null],
     });
     return next;
+  },
+
+  /**
+   * Atomic claim-and-update. Like `update()` but with strict claim semantics:
+   * - Returns `null` if key doesn't exist (no spurious inserts)
+   * - Returns `null` if `fn` returns `null` (caller signals "don't claim")
+   * - Returns `null` if all CAS retries exhausted (another writer won)
+   * - No unconditional fallback — guarantees exactly-once claiming
+   */
+  async claimUpdate<T>(key: string, fn: (current: T) => T | null, maxRetries = 3): Promise<T | null> {
+    await ensureTable();
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const result = await sqlite.execute({
+        sql: `SELECT value FROM ${TABLE} WHERE key = ?`,
+        args: [key],
+      });
+      if (result.rows.length === 0) return null; // key doesn't exist
+
+      const oldRaw = result.rows[0][0] as string;
+      const current = safeParse<T>(oldRaw);
+      if (current === null) return null; // unparseable
+
+      const next = fn(current);
+      if (next === null) return null; // caller declined to claim
+
+      const nextRaw = JSON.stringify(next);
+      const writeResult = await sqlite.execute({
+        sql: `UPDATE ${TABLE} SET value = ? WHERE key = ? AND value = ?`,
+        args: [nextRaw, key, oldRaw],
+      });
+
+      if (writeResult.rowsAffected > 0) return next;
+      // CAS conflict — retry
+    }
+    return null; // all retries exhausted
   },
 };
 

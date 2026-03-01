@@ -44,7 +44,7 @@ Deno.test("giveaways cron: active giveaway gets ended", async () => {
   mockFetch({ default: { status: 200, body: { id: "msg1" } } });
   try {
     await runCron();
-    // endGiveaway re-reads from KV and sets ended=true, then re-saves with cleanup delay
+    // endGiveaway atomically claims and sets ended=true, then re-saves with cleanup delay
     const updated = await kv.get<GiveawayConfig>(key);
     assertEquals(updated?.ended, true);
     assertEquals(Array.isArray(updated?.winners), true);

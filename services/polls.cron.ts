@@ -29,6 +29,7 @@ export default async function () {
   await Promise.allSettled(entries.map(async (entry) => {
     const config = entry.value as PollConfig;
 
+    // Ended polls past their cleanup delay — delete the KV row
     if (config.ended) {
       try {
         await kv.claimDelete(entry.key);
@@ -38,9 +39,10 @@ export default async function () {
       return;
     }
 
+    // Active poll whose due_at has arrived — endPoll handles atomicity
     try {
       const guildId = entry.key.replace("poll:", "");
-      await withTimeout(endPoll(guildId, config), ITEM_TIMEOUT_MS);
+      await withTimeout(endPoll(guildId), ITEM_TIMEOUT_MS);
     } catch (err) {
       console.error(`Failed to end poll ${entry.key}:`, err);
     }

@@ -16,6 +16,7 @@ import { createLogger } from "../webhook/logger.ts";
 import { CONFIG, isGuildAdmin } from "../constants.ts";
 import { UserFacingError } from "./errors.ts";
 import type { ComponentContext } from "./define-component.ts";
+import { kv } from "../persistence/kv.ts";
 
 const INTERACTION_TYPES = {
   PING: 1,
@@ -30,13 +31,6 @@ const logger = createLogger("InteractionHandler", {
 });
 
 const DEFERRED_TIMEOUT_MS = 9 * 60 * 1000; // 9 minutes (pro account 10-min limit, 1-min buffer)
-const MAX_COOLDOWN_ENTRIES = 10_000;
-const cooldowns = new Map<string, number>();
-let interactionCount = 0;
-
-export function getInteractionCount(): number {
-  return interactionCount;
-}
 
 let cachedKey: CryptoKey | null = null;
 
@@ -185,30 +179,19 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
     }
   }
 
-  // Cooldown check (with periodic eviction of expired entries, hard cap on size)
-  interactionCount++;
-  if (interactionCount % 100 === 0 || cooldowns.size > MAX_COOLDOWN_ENTRIES) {
-    const now = Date.now();
-    for (const [key, expiry] of cooldowns) {
-      if (now >= expiry) cooldowns.delete(key);
-    }
-  }
-
+  // KV-backed cooldown check
   const DEFAULT_COOLDOWN = 3;
   const cooldownSeconds = command.cooldown ?? DEFAULT_COOLDOWN;
   if (cooldownSeconds > 0) {
-    const cooldownKey = `${commandName}:${userId}`;
-    const expiry = cooldowns.get(cooldownKey);
-    if (expiry) {
-      if (Date.now() < expiry) {
-        const remaining = Math.ceil((expiry - Date.now()) / 1000);
-        return ephemeralResponse(
-          `Please wait ${remaining} second${remaining !== 1 ? "s" : ""} before using this command again.`,
-        );
-      }
-      cooldowns.delete(cooldownKey);
+    const cooldownKey = `cooldown:${commandName}:${userId}`;
+    const expiry = await kv.get<number>(cooldownKey);
+    if (expiry !== null && Date.now() < expiry) {
+      const remaining = Math.ceil((expiry - Date.now()) / 1000);
+      return ephemeralResponse(
+        `Please wait ${remaining} second${remaining !== 1 ? "s" : ""} before using this command again.`,
+      );
     }
-    cooldowns.set(cooldownKey, Date.now() + cooldownSeconds * 1000);
+    await kv.set(cooldownKey, Date.now() + cooldownSeconds * 1000);
   }
 
   // Extract command options with subcommand support

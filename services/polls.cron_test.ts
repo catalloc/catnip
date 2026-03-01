@@ -45,7 +45,7 @@ Deno.test("polls cron: active poll gets ended", async () => {
   mockFetch({ default: { status: 200, body: { id: "msg1" } } });
   try {
     await runCron();
-    // endPoll re-reads from KV and sets ended=true
+    // endPoll atomically claims and sets ended=true
     const updated = await kv.get<PollConfig>(key);
     assertEquals(updated?.ended, true);
   } finally {
