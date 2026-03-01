@@ -10,7 +10,7 @@ export default defineCommand({
   name: "color-picker",
   description: "Pick a color from a dropdown menu",
 
-  registration: { type: "guild", servers: ["MAIN"] },
+  registration: { type: "guild" },
   deferred: false,
   ephemeral: false,
 

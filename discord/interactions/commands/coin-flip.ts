@@ -10,10 +10,7 @@ export default defineCommand({
   name: "coin-flip",
   description: "Flip a coin",
 
-  registration: {
-    type: "guild",
-    servers: ["MAIN"],
-  },
+  registration: { type: "guild" },
 
   deferred: false,
   ephemeral: false,

@@ -1,18 +1,6 @@
 import "../../test/_mocks/env.ts";
 import { assertEquals } from "@std/assert";
-import { defineCommand, parseServerKey } from "./define-command.ts";
-
-Deno.test("parseServerKey: valid key (uppercase)", () => {
-  assertEquals(parseServerKey("MAIN"), "MAIN");
-});
-
-Deno.test("parseServerKey: valid key (lowercase)", () => {
-  assertEquals(parseServerKey("main"), "MAIN");
-});
-
-Deno.test("parseServerKey: invalid key returns null", () => {
-  assertEquals(parseServerKey("INVALID"), null);
-});
+import { defineCommand } from "./define-command.ts";
 
 Deno.test("defineCommand: provides default empty config", () => {
   const cmd = defineCommand({
@@ -31,11 +19,24 @@ Deno.test("defineCommand: preserves custom config", () => {
   const cmd = defineCommand({
     name: "test",
     description: "A test",
-    registration: { type: "guild", servers: ["MAIN"] },
+    registration: { type: "guild" },
     config: { limit: 10 },
     async execute() {
       return { success: true };
     },
   });
   assertEquals(cmd.config, { limit: 10 });
+});
+
+Deno.test("defineCommand: preserves adminOnly flag", () => {
+  const cmd = defineCommand({
+    name: "admin-test",
+    description: "An admin command",
+    registration: { type: "global" },
+    adminOnly: true,
+    async execute() {
+      return { success: true };
+    },
+  });
+  assertEquals(cmd.adminOnly, true);
 });

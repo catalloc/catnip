@@ -12,7 +12,7 @@
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
-import { ADMIN_ROLE_ID, CONFIG, EmbedColors } from "../../constants.ts";
+import { EmbedColors, isGuildAdmin } from "../../constants.ts";
 import { kv } from "../../persistence/kv.ts";
 import { createAutocompleteResponse } from "../patterns.ts";
 
@@ -60,12 +60,6 @@ async function getTagsCached(guildId: string): Promise<TagStore> {
 /** Invalidate the autocomplete cache for a guild (call after mutations). */
 function invalidateTagCache(guildId: string): void {
   tagCache.delete(kvKey(guildId));
-}
-
-function isAdmin(memberRoles: string[], userId: string): boolean {
-  if (CONFIG.appOwnerId && userId === CONFIG.appOwnerId) return true;
-  if (ADMIN_ROLE_ID && memberRoles.includes(ADMIN_ROLE_ID)) return true;
-  return false;
 }
 
 export default defineCommand({
@@ -155,7 +149,7 @@ export default defineCommand({
     },
   ],
 
-  registration: { type: "guild", servers: ["MAIN"] },
+  registration: { type: "guild" },
   deferred: false,
   ephemeral: false,
 
@@ -194,7 +188,7 @@ export default defineCommand({
     }
 
     if (sub === "add") {
-      if (!isAdmin(roles, userId)) {
+      if (!(await isGuildAdmin(guildId, userId, roles))) {
         return { success: false, error: "You need admin permissions to add tags." };
       }
 
@@ -222,7 +216,7 @@ export default defineCommand({
     }
 
     if (sub === "edit") {
-      if (!isAdmin(roles, userId)) {
+      if (!(await isGuildAdmin(guildId, userId, roles))) {
         return { success: false, error: "You need admin permissions to edit tags." };
       }
 
@@ -242,7 +236,7 @@ export default defineCommand({
     }
 
     if (sub === "remove") {
-      if (!isAdmin(roles, userId)) {
+      if (!(await isGuildAdmin(guildId, userId, roles))) {
         return { success: false, error: "You need admin permissions to remove tags." };
       }
 

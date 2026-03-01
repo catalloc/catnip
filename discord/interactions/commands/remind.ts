@@ -40,7 +40,7 @@ export default defineCommand({
     },
   ],
 
-  registration: { type: "guild", servers: ["MAIN"] },
+  registration: { type: "guild" },
   deferred: false,
 
   async execute({ guildId, userId, options }) {

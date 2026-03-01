@@ -9,7 +9,6 @@ const testEnv: Record<string, string> = {
   DISCORD_APP_ID: "test_app_id",
   DISCORD_PUBLIC_KEY: "0".repeat(64),
   DISCORD_BOT_TOKEN: "test_bot_token",
-  DISCORD_GUILD_ID: "test_guild_id",
   DISCORD_CLIENT_SECRET: "test_client_secret",
 };
 

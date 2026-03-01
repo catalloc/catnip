@@ -17,7 +17,7 @@ export default defineCommand({
   description: "",
   type: 2, // USER context menu
 
-  registration: { type: "guild", servers: ["MAIN"] },
+  registration: { type: "guild" },
   deferred: false,
 
   async execute({ targetId, resolved }) {

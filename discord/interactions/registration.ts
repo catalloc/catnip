@@ -2,18 +2,15 @@
  * discord/interactions/registration.ts
  *
  * Unified command registration, deregistration, and sync operations.
- * This module is the SINGLE SOURCE OF TRUTH for all Discord command management.
+ * Supports global commands (always available) and per-guild commands
+ * (managed by guild admins via /server commands enable/disable).
  */
 
 import { getCommand, getAllCommands } from "./registry.ts";
-import { SERVERS, type ServerKey, type RegistrationScope, type Command } from "./define-command.ts";
+import type { Command } from "./define-command.ts";
 import { discordBotFetch, commandsPath } from "../discord-api.ts";
 import { CONFIG } from "../constants.ts";
-
-const DEFAULT_REGISTRATION: RegistrationScope = {
-  type: "guild",
-  servers: ["MAIN"],
-};
+import { guildConfig } from "../persistence/guild-config.ts";
 
 export interface RegistrationResult {
   command: string;
@@ -28,21 +25,6 @@ export interface DeregistrationResult {
   success: boolean;
   guildId: string;
   error?: string;
-}
-
-function resolveGuildIds(
-  registration: RegistrationScope | undefined,
-): (string | undefined)[] {
-  const reg = registration || DEFAULT_REGISTRATION;
-
-  switch (reg.type) {
-    case "global":
-      return [undefined];
-    case "guild":
-      return reg.servers.map((server) => SERVERS[server]).filter((id) => !!id);
-    case "all-guilds":
-      return Object.values(SERVERS).filter((id) => !!id);
-  }
 }
 
 function commandPayload(cmd: Command): Record<string, any> {
@@ -83,6 +65,36 @@ export async function fetchRegisteredCommands(
   return result.data;
 }
 
+/** Get all commands with registration type "global" */
+export function getGlobalCommands(): Command[] {
+  return getAllCommands().filter((cmd) => cmd.registration.type === "global");
+}
+
+/** Get all commands with registration type "guild" (per-guild, managed by admins) */
+export function getGuildRegistrableCommands(): Command[] {
+  return getAllCommands().filter((cmd) => cmd.registration.type === "guild");
+}
+
+/** Register only global commands (server, commands, ping, help) */
+export async function registerGlobalCommands(): Promise<RegistrationResult[]> {
+  const globalCmds = getGlobalCommands();
+  if (globalCmds.length === 0) return [];
+
+  const payloads = globalCmds.map(commandPayload);
+  const result = await bulkOverwriteCommands(payloads, CONFIG.appId);
+
+  return payloads.map((p) => ({
+    command: p.name,
+    success: result.success,
+    error: result.error,
+    guildId: "global",
+  }));
+}
+
+/**
+ * Register a single command. Global commands register globally;
+ * guild commands register to all configured guilds that have them enabled.
+ */
 export async function registerCommand(
   commandName: string,
 ): Promise<RegistrationResult[]> {
@@ -94,25 +106,44 @@ export async function registerCommand(
       throw new Error(`Command not found in registry: ${commandName}`);
     }
 
-    const guildIds = resolveGuildIds(commandDef.registration);
-
-    if (guildIds.length === 0) {
-      throw new Error(`No valid guild IDs resolved for command: ${commandName}`);
-    }
-
-    for (const guildId of guildIds) {
+    if (commandDef.registration.type === "global") {
       const payload = commandPayload(commandDef);
-      const result = await discordBotFetch("POST", commandsPath(CONFIG.appId, guildId), payload);
-
+      const result = await discordBotFetch("POST", commandsPath(CONFIG.appId), payload);
       results.push({
         command: commandName,
         success: result.ok,
         commandId: result.data?.id,
         error: result.error,
-        guildId: guildId || "global",
+        guildId: "global",
       });
-
-      await new Promise((r) => setTimeout(r, 100));
+    } else {
+      // Guild command — register to all guilds that have it enabled
+      const guilds = await guildConfig.listGuilds();
+      for (const guild of guilds) {
+        if (guild.enabledCommands.includes(commandName)) {
+          const payload = commandPayload(commandDef);
+          const result = await discordBotFetch(
+            "POST",
+            commandsPath(CONFIG.appId, guild.guildId),
+            payload,
+          );
+          results.push({
+            command: commandName,
+            success: result.ok,
+            commandId: result.data?.id,
+            error: result.error,
+            guildId: guild.guildId,
+          });
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      }
+      if (results.length === 0) {
+        results.push({
+          command: commandName,
+          success: true,
+          guildId: "none",
+        });
+      }
     }
 
     return results;
@@ -128,63 +159,45 @@ export async function registerCommand(
 }
 
 /**
- * Register all commands from registry using bulk overwrite per guild
+ * Register all commands: global commands globally, then for each
+ * configured guild register their enabled commands.
  */
 export async function registerAllCommandsFromRegistry(): Promise<
   RegistrationResult[]
 > {
   const allResults: RegistrationResult[] = [];
-  const byGuild = new Map<string | undefined, Record<string, any>[]>();
 
-  for (const cmd of getAllCommands()) {
-    const guildIds = resolveGuildIds(cmd.registration);
-    const payload = commandPayload(cmd);
-    for (const guildId of guildIds) {
-      if (!byGuild.has(guildId)) byGuild.set(guildId, []);
-      byGuild.get(guildId)!.push(payload);
-    }
-  }
+  // 1. Register global commands
+  const globalResults = await registerGlobalCommands();
+  allResults.push(...globalResults);
 
-  for (const [guildId, commands] of byGuild) {
-    const result = await bulkOverwriteCommands(commands, CONFIG.appId, guildId);
-    for (const cmd of commands) {
-      allResults.push({
-        command: cmd.name,
-        success: result.success,
-        error: result.error,
-        guildId: guildId || "global",
-      });
-    }
+  // 2. For each configured guild, register their enabled commands
+  const guilds = await guildConfig.listGuilds();
+  for (const guild of guilds) {
+    if (guild.enabledCommands.length === 0) continue;
+    const guildResults = await registerCommandsToGuild(
+      guild.guildId,
+      guild.enabledCommands,
+    );
+    allResults.push(...guildResults);
   }
 
   return allResults;
 }
 
 /**
- * Register commands to a specific server only.
- * Uses bulk overwrite when registering all; sequential POST for a subset.
+ * Register commands to a specific guild.
+ * Uses bulk overwrite when no subset specified; sequential POST for a subset.
  */
-export async function registerCommandsToServer(
-  serverKey: ServerKey,
+export async function registerCommandsToGuild(
+  guildId: string,
   commandNames?: string[],
 ): Promise<RegistrationResult[]> {
-  const guildId = SERVERS[serverKey];
-  if (!guildId) {
-    throw new Error(`No guild ID found for server: ${serverKey}`);
-  }
-
-  const serverCommands = getAllCommands()
-    .filter((cmd) => {
-      const reg = cmd.registration || DEFAULT_REGISTRATION;
-      if (reg.type === "all-guilds") return true;
-      if (reg.type === "guild") return reg.servers.includes(serverKey);
-      return false;
-    })
-    .map((cmd) => cmd.name);
+  const guildCommands = getGuildRegistrableCommands().map((cmd) => cmd.name);
 
   const toRegister = commandNames
-    ? commandNames.filter((n) => serverCommands.includes(n))
-    : serverCommands;
+    ? commandNames.filter((n) => guildCommands.includes(n))
+    : guildCommands;
 
   const payloads: Record<string, any>[] = [];
   for (const cmdName of toRegister) {
@@ -219,20 +232,10 @@ export async function registerCommandsToServer(
   return results;
 }
 
-export async function deregisterCommandFromServer(
+export async function deregisterCommandFromGuild(
   commandName: string,
-  serverKey: ServerKey,
+  guildId: string,
 ): Promise<DeregistrationResult> {
-  const guildId = SERVERS[serverKey];
-  if (!guildId) {
-    return {
-      command: commandName,
-      success: false,
-      guildId: serverKey,
-      error: `No guild ID found for server: ${serverKey}`,
-    };
-  }
-
   try {
     const commands = await fetchRegisteredCommands(guildId);
     const existing = commands.find((c) => c.name === commandName);
@@ -263,17 +266,12 @@ export async function deregisterCommandFromServer(
 }
 
 /**
- * Deregister ALL commands from a specific server
- * Uses bulk overwrite with empty array (most efficient)
+ * Deregister ALL commands from a specific guild.
+ * Uses bulk overwrite with empty array (most efficient).
  */
-export async function deregisterAllFromServer(
-  serverKey: ServerKey,
+export async function deregisterAllFromGuild(
+  guildId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const guildId = SERVERS[serverKey];
-  if (!guildId) {
-    return { success: false, error: `No guild ID for ${serverKey}` };
-  }
-
   try {
     return await bulkOverwriteCommands([], CONFIG.appId, guildId);
   } catch (error) {

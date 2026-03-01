@@ -10,10 +10,7 @@ export default defineCommand({
   name: "ping",
   description: "Check if the bot is responsive",
 
-  registration: {
-    type: "guild",
-    servers: ["MAIN"],
-  },
+  registration: { type: "global" },
 
   deferred: false,
 

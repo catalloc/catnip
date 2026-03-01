@@ -6,25 +6,14 @@
  */
 
 import { OptionTypes } from "./patterns.ts";
-import { CONFIG } from "../constants.ts";
 import type { Embed } from "../webhook/send.ts";
-
-/**
- * Server configuration for command registration
- */
-export const SERVERS = {
-  MAIN: CONFIG.guildId,
-} as const;
-
-export type ServerKey = keyof typeof SERVERS;
 
 /**
  * Registration scope options for commands
  */
 export type RegistrationScope =
   | { type: "global" }
-  | { type: "guild"; servers: ServerKey[] }
-  | { type: "all-guilds" };
+  | { type: "guild" };
 
 /**
  * Command option definition (matches Discord API)
@@ -99,11 +88,8 @@ export interface Command<TConfig = Record<string, any>> {
   /** Cooldown in seconds between uses per user (optional) */
   cooldown?: number;
 
-  /** Permission requirements — checked by handler before execute() */
-  permissions?: {
-    roles?: string[];
-    users?: string[];
-  };
+  /** If true, only guild admins (or bot owner) can use this command */
+  adminOnly?: boolean;
 
   /** Command-specific configuration */
   config: TConfig;
@@ -127,10 +113,7 @@ export type CommandInput<TConfig = Record<string, any>> = {
   deferred?: boolean;
   ephemeral?: boolean;
   cooldown?: number;
-  permissions?: {
-    roles?: string[];
-    users?: string[];
-  };
+  adminOnly?: boolean;
   config?: TConfig;
   execute: (ctx: CommandContext<TConfig>) => Promise<CommandResult>;
   autocomplete?: (body: any, config: TConfig) => Promise<Response> | Response;
@@ -145,10 +128,7 @@ export type CommandInput<TConfig = Record<string, any>> = {
  *   name: "my-command",
  *   description: "Does something cool",
  *   options: [...],
- *   registration: { type: "guild", servers: ["MAIN"] },
- *   config: {
- *     authorizedRoles: ["123456789"],
- *   },
+ *   registration: { type: "guild" },
  *   async execute({ guildId, userId, options, config }) {
  *     // Handler has typed access to config
  *     return { success: true, message: "Done!" };
@@ -161,16 +141,5 @@ export function defineCommand<TConfig = Record<string, any>>(
 ): Command<TConfig> {
   return { ...input, config: (input.config ?? {}) as TConfig };
 }
-
-const SERVER_KEYS = Object.keys(SERVERS) as ServerKey[];
-
-/** Validate and parse a server key from user input. Returns null if invalid. */
-export function parseServerKey(input: string): ServerKey | null {
-  const upper = input.toUpperCase() as ServerKey;
-  return SERVER_KEYS.includes(upper) ? upper : null;
-}
-
-/** All valid server keys. */
-export { SERVER_KEYS };
 
 export { OptionTypes };

@@ -22,7 +22,7 @@ export default defineCommand({
     },
   ],
 
-  registration: { type: "guild", servers: ["MAIN"] },
+  registration: { type: "guild" },
   deferred: false,
   ephemeral: false,
 

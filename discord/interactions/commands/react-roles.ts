@@ -12,7 +12,7 @@
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
-import { ADMIN_ROLE_ID, CONFIG, EmbedColors } from "../../constants.ts";
+import { EmbedColors } from "../../constants.ts";
 import { kv } from "../../persistence/kv.ts";
 import { discordBotFetch } from "../../discord-api.ts";
 
@@ -146,12 +146,8 @@ export default defineCommand({
     },
   ],
 
-  registration: { type: "guild", servers: ["MAIN"] },
-
-  permissions: {
-    users: [CONFIG.appOwnerId],
-    roles: [ADMIN_ROLE_ID],
-  },
+  registration: { type: "guild" },
+  adminOnly: true,
 
   async execute({ guildId, options }) {
     const sub = options?.subcommand as string | undefined;

@@ -2,22 +2,14 @@
  * Commands - Admin command for registering/unregistering slash commands
  *
  * Subcommands:
- *   /commands register [command] [server]
- *   /commands unregister [server] [command]
+ *   /commands register [command]    — Register a command (or all)
+ *   /commands unregister [command]  — Unregister a command (or all) from this guild
  *
  * File: discord/interactions/commands/commands.ts
  */
 
-import {
-  defineCommand,
-  OptionTypes,
-  SERVERS,
-  SERVER_KEYS,
-  parseServerKey,
-  type ServerKey,
-} from "../define-command.ts";
+import { defineCommand, OptionTypes } from "../define-command.ts";
 import { createAutocompleteResponse } from "../patterns.ts";
-import { ADMIN_ROLE_ID, CONFIG } from "../../constants.ts";
 
 // Lazy imports — registry.ts dynamically imports command files, so command
 // files cannot statically import registry.ts or registration.ts (which
@@ -34,15 +26,6 @@ async function registerableNames(): Promise<string[]> {
     .filter((n) => n !== "commands");
 }
 
-/** Format a server key from a guild ID, falling back to a truncated ID */
-function serverLabel(guildId: string | undefined): string {
-  if (!guildId) return "global";
-  return (
-    Object.entries(SERVERS).find(([, id]) => id === guildId)?.[0] ??
-    guildId.slice(0, 12)
-  );
-}
-
 /** Build a results summary message */
 function formatResults(
   summary: string,
@@ -57,7 +40,7 @@ function formatResults(
   if (successful.length > 0 && successful.length <= 5) {
     message += `\n**Registered:**\n`;
     for (const r of successful) {
-      message += `- \`${r.command}\` -> ${serverLabel(r.guildId)}\n`;
+      message += `- \`${r.command}\` -> ${r.guildId ?? "unknown"}\n`;
     }
   }
 
@@ -87,15 +70,6 @@ function getCachedCommands(
   return null;
 }
 
-function autocompleteServerChoices(query: string) {
-  return [
-    { name: "Use Registry Defaults", value: "configured" },
-    ...SERVER_KEYS.map((key) => ({ name: key, value: key.toLowerCase() })),
-  ].filter(
-    (c) => c.name.toLowerCase().includes(query) || c.value.includes(query),
-  );
-}
-
 async function autocompleteCommandChoices(query: string) {
   const names = await registerableNames();
   return [
@@ -113,7 +87,7 @@ export default defineCommand({
   options: [
     {
       name: "register",
-      description: "Register slash commands to Discord servers",
+      description: "Register slash commands with Discord",
       type: OptionTypes.SUB_COMMAND,
       required: false,
       options: [
@@ -124,28 +98,14 @@ export default defineCommand({
           required: true,
           autocomplete: true,
         },
-        {
-          name: "server",
-          description: "Target server (leave empty for registry defaults)",
-          type: OptionTypes.STRING,
-          required: false,
-          autocomplete: true,
-        },
       ],
     },
     {
       name: "unregister",
-      description: "Unregister slash commands from Discord servers",
+      description: "Unregister slash commands from this guild",
       type: OptionTypes.SUB_COMMAND,
       required: false,
       options: [
-        {
-          name: "server",
-          description: "Target server to unregister from",
-          type: OptionTypes.STRING,
-          required: true,
-          autocomplete: true,
-        },
         {
           name: "command",
           description: "Command to unregister (or 'all')",
@@ -157,19 +117,14 @@ export default defineCommand({
     },
   ],
 
-  registration: { type: "guild", servers: ["MAIN"] },
+  registration: { type: "global" },
+  adminOnly: true,
 
-  permissions: {
-    users: [CONFIG.appOwnerId],
-    roles: [ADMIN_ROLE_ID],
-  },
-
-  async execute({ options }) {
+  async execute({ guildId, options }) {
     const sub = options?.subcommand as string | undefined;
 
     if (sub === "register") {
       const commandOption = options?.command as string;
-      const serverOption = options?.server as string | undefined;
 
       if (!commandOption) {
         return { success: false, error: "No command specified." };
@@ -182,30 +137,15 @@ export default defineCommand({
         const reg = await getRegistration();
 
         if (commandOption === "all") {
-          if (serverOption && serverOption !== "configured") {
-            const serverKey = parseServerKey(serverOption);
-            if (!serverKey) return { success: false, error: `Unknown server: ${serverOption}` };
-            results = await reg.registerCommandsToServer(serverKey);
-            summary = `Registered ${results.filter((r) => r.success).length} commands to **${serverKey}**`;
-          } else {
-            results = await reg.registerAllCommandsFromRegistry();
-            summary = `Registered all commands to their configured servers`;
-          }
+          results = await reg.registerAllCommandsFromRegistry();
+          summary = `Registered all commands (global + per-guild)`;
         } else {
           const names = await registerableNames();
           if (!names.includes(commandOption)) {
             return { success: false, error: `Unknown command: ${commandOption}` };
           }
-
-          if (serverOption && serverOption !== "configured") {
-            const serverKey = parseServerKey(serverOption);
-            if (!serverKey) return { success: false, error: `Unknown server: ${serverOption}` };
-            results = await reg.registerCommandsToServer(serverKey, [commandOption]);
-            summary = `Registered **/${commandOption}** to **${serverKey}**`;
-          } else {
-            results = await reg.registerCommand(commandOption);
-            summary = `Registered **/${commandOption}** to configured servers`;
-          }
+          results = await reg.registerCommand(commandOption);
+          summary = `Registered **/${commandOption}**`;
         }
 
         return {
@@ -222,33 +162,28 @@ export default defineCommand({
     }
 
     if (sub === "unregister") {
-      const serverOption = (options?.server as string)?.toUpperCase();
       const commandOption = options?.command as string;
-
-      const serverKey = serverOption ? parseServerKey(serverOption) : null;
-      if (!serverKey) {
-        return {
-          success: false,
-          error: `Invalid server. Valid options: ${SERVER_KEYS.join(", ")}`,
-        };
-      }
 
       if (!commandOption) {
         return { success: false, error: "No command specified." };
       }
 
+      if (!guildId) {
+        return { success: false, error: "This subcommand must be used in a server." };
+      }
+
       const reg = await getRegistration();
 
       if (commandOption === "all") {
-        const result = await reg.deregisterAllFromServer(serverKey);
+        const result = await reg.deregisterAllFromGuild(guildId);
         return result.success
-          ? { success: true, message: `Removed all commands from ${serverKey}` }
+          ? { success: true, message: `Removed all commands from this guild.` }
           : { success: false, error: result.error || "Failed to deregister commands" };
       }
 
-      const result = await reg.deregisterCommandFromServer(commandOption, serverKey);
+      const result = await reg.deregisterCommandFromGuild(commandOption, guildId);
       return result.success
-        ? { success: true, message: `Unregistered \`${commandOption}\` from ${serverKey}` }
+        ? { success: true, message: `Unregistered \`${commandOption}\` from this guild.` }
         : { success: false, error: result.error || `Failed to unregister ${commandOption}` };
     }
 
@@ -271,33 +206,18 @@ export default defineCommand({
       if (focusedOption.name === "command") {
         return createAutocompleteResponse(await autocompleteCommandChoices(query));
       }
-      if (focusedOption.name === "server") {
-        return createAutocompleteResponse(autocompleteServerChoices(query));
-      }
     }
 
     if (subName === "unregister") {
-      if (focusedOption.name === "server") {
-        const choices = SERVER_KEYS.filter((key) =>
-          key.toLowerCase().includes(query),
-        ).map((key) => ({ name: key, value: key.toLowerCase() }));
-        return createAutocompleteResponse(choices);
-      }
-
       if (focusedOption.name === "command") {
-        const serverOpt = subOption.options?.find(
-          (o: any) => o.name === "server",
-        );
-        const serverKey = serverOpt?.value?.toUpperCase() as ServerKey | undefined;
-
-        if (!serverKey || !SERVER_KEYS.includes(serverKey)) {
+        const guildId = body.guild_id as string;
+        if (!guildId) {
           return createAutocompleteResponse([
-            { name: "Select a server first", value: "_invalid" },
+            { name: "Must be used in a server", value: "_invalid" },
           ]);
         }
 
         try {
-          const guildId = SERVERS[serverKey];
           let registeredCommands = getCachedCommands(guildId);
           if (!registeredCommands) {
             const reg = await getRegistration();
@@ -328,7 +248,7 @@ export default defineCommand({
           return createAutocompleteResponse(choices);
         } catch {
           return createAutocompleteResponse([
-            { name: `Failed to fetch from ${serverKey}`, value: "_error" },
+            { name: "Failed to fetch commands", value: "_error" },
           ]);
         }
       }

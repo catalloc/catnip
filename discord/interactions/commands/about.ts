@@ -10,10 +10,7 @@ export default defineCommand({
   name: "about",
   description: "Show information about this bot",
 
-  registration: {
-    type: "guild",
-    servers: ["MAIN"],
-  },
+  registration: { type: "guild" },
 
   deferred: false,
   ephemeral: false,

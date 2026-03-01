@@ -10,7 +10,6 @@
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
-import { ADMIN_ROLE_ID, CONFIG } from "../../constants.ts";
 import { kv } from "../../persistence/kv.ts";
 import { parseDuration } from "../../helpers/duration.ts";
 
@@ -86,12 +85,8 @@ export default defineCommand({
     },
   ],
 
-  registration: { type: "guild", servers: ["MAIN"] },
-
-  permissions: {
-    users: [CONFIG.appOwnerId],
-    roles: [ADMIN_ROLE_ID],
-  },
+  registration: { type: "guild" },
+  adminOnly: true,
 
   async execute({ guildId, userId, options }) {
     const sub = options?.subcommand as string | undefined;

@@ -11,10 +11,7 @@ export default defineCommand({
   name: "help",
   description: "List available commands",
 
-  registration: {
-    type: "guild",
-    servers: ["MAIN"],
-  },
+  registration: { type: "global" },
 
   deferred: false,
 
@@ -23,7 +20,7 @@ export default defineCommand({
     // command files since they are dynamically imported by registry.ts
     const { getAllCommands } = await import("../registry.ts");
     const commands = getAllCommands()
-      .filter((cmd) => !cmd.permissions)
+      .filter((cmd) => !cmd.adminOnly)
       .sort((a, b) => a.name.localeCompare(b.name));
 
     const lines = commands.map(

@@ -13,7 +13,7 @@ import {
   createAutocompleteResponse,
 } from "./patterns.ts";
 import { createLogger } from "../webhook/logger.ts";
-import { CONFIG } from "../constants.ts";
+import { CONFIG, isGuildAdmin } from "../constants.ts";
 import { UserFacingError } from "./errors.ts";
 import type { ComponentContext } from "./define-component.ts";
 
@@ -165,17 +165,14 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
   const guildId = body.guild_id;
   const userId = body.member?.user?.id || body.user?.id;
 
-  // Permission guard
-  if (command.permissions) {
+  // Admin-only guard
+  if (command.adminOnly) {
     if (!body.guild_id) {
       return ephemeralResponse("This command can only be used in a server.");
     }
     const memberRoles: string[] = body.member?.roles || [];
-    const isAuthorizedUser =
-      command.permissions.users?.includes(userId) ?? false;
-    const isAuthorizedRole =
-      command.permissions.roles?.some((r) => memberRoles.includes(r)) ?? false;
-    if (!isAuthorizedUser && !isAuthorizedRole) {
+    const authorized = await isGuildAdmin(guildId, userId, memberRoles, body.member?.permissions);
+    if (!authorized) {
       return ephemeralResponse(
         "You are not authorized to use this command.",
       );

@@ -10,7 +10,7 @@ export default defineCommand({
   name: "feedback",
   description: "Submit feedback via a modal form",
 
-  registration: { type: "guild", servers: ["MAIN"] },
+  registration: { type: "guild" },
   deferred: false,
 
   async execute() {

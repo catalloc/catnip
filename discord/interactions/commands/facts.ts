@@ -53,7 +53,7 @@ export default defineCommand({
   name: "facts",
   description: "Browse fun facts with pagination buttons",
 
-  registration: { type: "guild", servers: ["MAIN"] },
+  registration: { type: "guild" },
   deferred: false,
   ephemeral: false,
 

@@ -26,6 +26,7 @@ export { default as r } from "./commands/r.ts";
 export { default as reactRoles } from "./commands/react-roles.ts";
 export { default as remind } from "./commands/remind.ts";
 export { default as schedule } from "./commands/schedule.ts";
+export { default as server } from "./commands/server.ts";
 export { default as slowEcho } from "./commands/slow-echo.ts";
 export { default as tag } from "./commands/tag.ts";
 export { default as userInfo } from "./commands/user-info.ts";
