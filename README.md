@@ -10,6 +10,7 @@ Open source Discord bot built for [Val Town](https://val.town). Ships with slash
   - [2. Create a Discord Application](#2-create-a-discord-application)
   - [3. Set Environment Variables](#3-set-environment-variables)
   - [4. Configure the Interactions Endpoint](#4-configure-the-interactions-endpoint)
+  - [Admin Requests](#admin-requests)
   - [5. Discover Commands](#5-discover-commands)
   - [6. Register Commands](#6-register-commands)
   - [7. Invite the Bot](#7-invite-the-bot)
@@ -102,25 +103,26 @@ To find your Discord user ID: enable Developer Mode in Discord settings (App Set
 3. Set **Interactions Endpoint URL** to your val's URL
 4. Discord will send a verification ping — if your environment variables are set correctly, it will succeed and save
 
+### Admin Requests
+
+Steps 5, 6, and 10 require authenticated HTTP requests to your val. All admin endpoints use the same format:
+
+```http
+GET https://YOUR_VAL_URL?discover=true
+Authorization: Bearer <your-admin-password>
+```
+
+Replace the URL query parameter for each endpoint: `?discover=true`, `?register=true`, `?register-metadata=true`.
+
 ### 5. Discover Commands
 
-The bot needs to know what commands and components exist. Run the discover endpoint to scan the project and save a manifest to KV:
-
-```
-curl -H "Authorization: Bearer YOUR_ADMIN_PASSWORD" \
-  "https://YOUR_VAL_URL?discover=true"
-```
+The bot needs to know what commands and components exist. Make an [admin request](#admin-requests) with `?discover=true`.
 
 This scans `discord/interactions/commands/` and `discord/interactions/components/` and saves the file list to KV. You need to re-run this whenever you add or remove command/component files.
 
 ### 6. Register Commands
 
-Register the bot's slash commands with Discord:
-
-```
-curl -H "Authorization: Bearer YOUR_ADMIN_PASSWORD" \
-  "https://YOUR_VAL_URL?register=true"
-```
+Register the bot's slash commands with Discord by making an [admin request](#admin-requests) with `?register=true`.
 
 This registers **global commands** (`/ping`, `/help`, `/commands`, `/server`) with Discord's API. Global commands can take up to an hour to propagate.
 
@@ -177,11 +179,7 @@ If you want to use Discord's [Linked Roles](https://discord.com/developers/docs/
 1. Set `DISCORD_CLIENT_SECRET` in your Val Town environment variables (found in the Discord Developer Portal under **OAuth2** → **Client Secret**)
 2. In the portal under **General Information**, set **Linked Roles Verification URL** to `https://YOUR_VAL_URL/linked-roles`
 3. Under **OAuth2** → **Redirects**, add `https://YOUR_VAL_URL/linked-roles/callback`
-4. Register the metadata schema:
-   ```
-   curl -H "Authorization: Bearer YOUR_ADMIN_PASSWORD" \
-     "https://YOUR_VAL_URL?register-metadata=true"
-   ```
+4. Register the metadata schema by making an [admin request](#admin-requests) with `?register-metadata=true`
 5. In your Discord server, go to **Server Settings** → **Roles**, create a role, and under **Links** add your app as a requirement
 
 The default verifier (`always-verified.ts`) approves everyone. Switch to a different verifier (Steam, GitHub, Patreon, account age) by changing the import in `services/interactions.http.ts`. See the [Linked Roles](#linked-roles) section for details.
@@ -255,7 +253,7 @@ The bot runs entirely on Val Town's serverless platform:
 | `/patreon/webhook` | Patreon membership webhook (HMAC-MD5 verified) |
 | `POST /` | Discord interactions endpoint (Ed25519 verified) |
 
-Admin endpoints require `Authorization: Bearer <ADMIN_PASSWORD>` header.
+Admin endpoints require a Bearer token header with your admin password.
 
 All loggers are flushed in a `finally` block before the isolate terminates.
 
