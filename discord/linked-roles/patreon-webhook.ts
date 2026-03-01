@@ -74,11 +74,37 @@ function extractMemberData(payload: Record<string, unknown>): {
   }
 }
 
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 30;
+const requestTimestamps: number[] = [];
+
+function isRateLimited(): boolean {
+  const now = Date.now();
+  // Evict timestamps outside the window
+  while (requestTimestamps.length > 0 && requestTimestamps[0] <= now - RATE_LIMIT_WINDOW_MS) {
+    requestTimestamps.shift();
+  }
+  if (requestTimestamps.length >= RATE_LIMIT_MAX) {
+    return true;
+  }
+  requestTimestamps.push(now);
+  return false;
+}
+
+export const _internals = { requestTimestamps, isRateLimited };
+
 /**
  * Handle an incoming Patreon webhook request.
  * POST /patreon/webhook
  */
 export async function handlePatreonWebhook(req: Request): Promise<Response> {
+  if (isRateLimited()) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": "60" },
+    });
+  }
+
   if (!CONFIG.patreonWebhookSecret) {
     return Response.json(
       { error: "PATREON_WEBHOOK_SECRET not configured" },

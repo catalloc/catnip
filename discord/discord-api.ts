@@ -41,23 +41,56 @@ export async function discordBotFetch(
     headers["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(`https://discord.com/api/v10/${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(30_000),
-  });
+  const requestBody = body !== undefined ? JSON.stringify(body) : undefined;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    return { ok: false, status: response.status, error: `${response.status}: ${errorText}` };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(`https://discord.com/api/v10/${path}`, {
+        method,
+        headers,
+        body: requestBody,
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (response.ok) {
+        if (response.status === 204) {
+          return { ok: true, status: 204 };
+        }
+        const data = await response.json();
+        return { ok: true, status: response.status, data };
+      }
+
+      // 429 Rate Limited — parse Retry-After, wait (capped at 10s), retry once
+      if (response.status === 429 && attempt === 0) {
+        const retryAfter = response.headers.get("Retry-After");
+        const waitMs = retryAfter
+          ? Math.min(Math.ceil(parseFloat(retryAfter) * 1000), 10_000)
+          : 1000;
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+
+      // 5xx Server Error — wait 1s, retry once
+      if (response.status >= 500 && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+
+      const errorText = await response.text();
+      return { ok: false, status: response.status, error: `${response.status}: ${errorText}` };
+    } catch (error) {
+      // Network error — wait 1s, retry once
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      return {
+        ok: false,
+        status: 0,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
-  // DELETE returns 204 with no body
-  if (response.status === 204) {
-    return { ok: true, status: 204 };
-  }
-
-  const data = await response.json();
-  return { ok: true, status: response.status, data };
+  return { ok: false, status: 0, error: "Max retries exceeded" };
 }

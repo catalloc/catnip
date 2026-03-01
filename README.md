@@ -31,12 +31,12 @@ A clean, general-purpose Discord bot template built for [Val Town](https://val.t
 | `DISCORD_APP_ID` | Yes | Discord application ID |
 | `DISCORD_PUBLIC_KEY` | Yes | Discord public key (for signature verification) |
 | `DISCORD_BOT_TOKEN` | Yes | Discord bot token |
-| `DISCORD_GUILD_ID` | Yes | Your Discord server (guild) ID |
 | `DISCORD_APP_OWNER_ID` | No | Your Discord user ID (for admin command access) |
-| `DISCORD_ADMIN_ROLE_ID` | No | Role ID authorized for admin commands |
 | `DISCORD_CONSOLE` | No | Webhook URL for logger output |
 | `DISCORD_CLIENT_SECRET` | No | Discord client secret (required for Linked Roles) |
 | `ADMIN_PASSWORD` | No | Password for admin endpoints (`?discover`, `?register`) |
+| `STEAM_API_KEY` | No | Steam Web API key (for Steam-based linked role verification) |
+| `PATREON_WEBHOOK_SECRET` | No | Patreon webhook secret (for Patreon-based linked role verification) |
 
 ## Adding a New Command
 

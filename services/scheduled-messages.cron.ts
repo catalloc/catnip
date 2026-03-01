@@ -11,6 +11,7 @@ import type { ScheduledMessage } from "../discord/interactions/commands/schedule
 import { KV_PREFIX } from "../discord/interactions/commands/schedule.ts";
 
 const CONCURRENCY = 5;
+const MAX_RETRIES = 5;
 
 /** Status codes that indicate the target is permanently unreachable. */
 const PERMANENT_FAILURE_CODES = [403, 404];
@@ -36,13 +37,21 @@ async function deliverBatch(
           console.warn(`Scheduled message ${entry.key} dropped: channel inaccessible (${result.status})`);
         } else {
           console.error(`Failed to send scheduled message ${entry.key}: ${result.error}`);
-          // Transient failure — re-insert so it's retried next cron run
-          await kv.set(entry.key, msg, Date.now());
+          const retryCount = (msg.retryCount ?? 0) + 1;
+          if (retryCount < MAX_RETRIES) {
+            await kv.set(entry.key, { ...msg, retryCount }, Date.now());
+          } else {
+            console.warn(`Scheduled message ${entry.key} dropped after ${MAX_RETRIES} retries`);
+          }
         }
       } catch (err) {
         console.error(`Failed to send scheduled message ${entry.key}:`, err);
-        // Transient failure — re-insert so it's retried next cron run
-        await kv.set(entry.key, msg, Date.now());
+        const retryCount = (msg.retryCount ?? 0) + 1;
+        if (retryCount < MAX_RETRIES) {
+          await kv.set(entry.key, { ...msg, retryCount }, Date.now());
+        } else {
+          console.warn(`Scheduled message ${entry.key} dropped after ${MAX_RETRIES} retries`);
+        }
       }
     }),
   );

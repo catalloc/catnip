@@ -64,6 +64,8 @@ function invalidateTagCache(guildId: string): void {
   tagCache.delete(kvKey(guildId));
 }
 
+export const _internals = { sanitizeTagName, kvKey };
+
 export default defineCommand({
   name: "tag",
   description: "View and manage custom text tags",

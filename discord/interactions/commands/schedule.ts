@@ -20,6 +20,7 @@ export interface ScheduledMessage {
   sendAt: number;
   createdBy: string;
   createdAt: number;
+  retryCount?: number;
 }
 
 const MAX_SCHEDULED_PER_GUILD = 25;

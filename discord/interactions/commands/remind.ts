@@ -17,6 +17,7 @@ export interface Reminder {
   message: string;
   dueAt: number;
   createdAt: number;
+  retryCount?: number;
 }
 
 const MAX_REMINDERS_PER_USER = 10;
