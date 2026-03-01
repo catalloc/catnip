@@ -29,6 +29,7 @@ interface TagStore {
 const MAX_TAGS = 50;
 const MAX_TAG_NAME_LENGTH = 64;
 const AUTOCOMPLETE_CACHE_TTL_MS = 30_000; // 30 seconds
+const MAX_CACHE_ENTRIES = 500;
 
 const tagCache = new Map<string, { data: TagStore; expiresAt: number }>();
 
@@ -53,6 +54,7 @@ async function getTagsCached(guildId: string): Promise<TagStore> {
     return cached.data;
   }
   const data = await getTags(guildId);
+  if (tagCache.size >= MAX_CACHE_ENTRIES) tagCache.clear();
   tagCache.set(key, { data, expiresAt: Date.now() + AUTOCOMPLETE_CACHE_TTL_MS });
   return data;
 }

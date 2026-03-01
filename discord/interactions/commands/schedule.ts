@@ -25,6 +25,7 @@ export interface ScheduledMessage {
 const MAX_SCHEDULED_PER_GUILD = 25;
 const KV_PREFIX = "scheduled-msg:";
 const AUTOCOMPLETE_CACHE_TTL_MS = 30_000; // 30 seconds
+const MAX_CACHE_ENTRIES = 500;
 
 const autocompleteCache = new Map<string, { data: Array<{ key: string; value: unknown }>; expiresAt: number }>();
 
@@ -39,6 +40,7 @@ async function getScheduledMessagesCached(guildId: string): Promise<Array<{ key:
     return cached.data;
   }
   const data = await kv.list(prefix);
+  if (autocompleteCache.size >= MAX_CACHE_ENTRIES) autocompleteCache.clear();
   autocompleteCache.set(prefix, { data, expiresAt: Date.now() + AUTOCOMPLETE_CACHE_TTL_MS });
   return data;
 }

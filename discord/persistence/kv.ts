@@ -25,6 +25,10 @@ async function ensureTable(): Promise<void> {
   initialized = true;
 }
 
+function escapeLikePrefix(prefix: string): string {
+  return prefix.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 function safeParse<T>(raw: string): T | null {
   try {
     return JSON.parse(raw) as T;
@@ -64,8 +68,8 @@ export const kv = {
     await ensureTable();
     const result = prefix
       ? await sqlite.execute({
-          sql: `SELECT key, value FROM ${TABLE} WHERE key LIKE ?`,
-          args: [`${prefix}%`],
+          sql: `SELECT key, value FROM ${TABLE} WHERE key LIKE ? ESCAPE '\\'`,
+          args: [`${escapeLikePrefix(prefix)}%`],
         })
       : await sqlite.execute(`SELECT key, value FROM ${TABLE}`);
     const entries: Array<{ key: string; value: unknown }> = [];
@@ -87,8 +91,8 @@ export const kv = {
     await ensureTable();
     const result = prefix
       ? await sqlite.execute({
-          sql: `SELECT key, value FROM ${TABLE} WHERE due_at IS NOT NULL AND due_at <= ? AND key LIKE ?`,
-          args: [now, `${prefix}%`],
+          sql: `SELECT key, value FROM ${TABLE} WHERE due_at IS NOT NULL AND due_at <= ? AND key LIKE ? ESCAPE '\\'`,
+          args: [now, `${escapeLikePrefix(prefix)}%`],
         })
       : await sqlite.execute({
           sql: `SELECT key, value FROM ${TABLE} WHERE due_at IS NOT NULL AND due_at <= ?`,
@@ -150,4 +154,4 @@ export const kv = {
   },
 };
 
-export const _internals = { safeParse };
+export const _internals = { safeParse, escapeLikePrefix };

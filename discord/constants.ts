@@ -26,6 +26,8 @@ export const CONFIG = {
 /** Discord ADMINISTRATOR permission bit */
 const ADMINISTRATOR_BIT = 0x8n;
 
+let guildConfigModule: typeof import("./persistence/guild-config.ts") | null = null;
+
 /**
  * Check if a user is a guild admin. Checks (in order):
  * 1. Global bot owner (CONFIG.appOwnerId)
@@ -52,8 +54,8 @@ export async function isGuildAdmin(
   }
 
   // 3. Per-guild admin roles (lazy import to avoid circular deps at module load)
-  const { guildConfig } = await import("./persistence/guild-config.ts");
-  const adminRoleIds = await guildConfig.getAdminRoleIds(guildId);
+  guildConfigModule ??= await import("./persistence/guild-config.ts");
+  const adminRoleIds = await guildConfigModule.guildConfig.getAdminRoleIds(guildId);
   if (adminRoleIds.length > 0 && memberRoles.some((r) => adminRoleIds.includes(r))) {
     return true;
   }

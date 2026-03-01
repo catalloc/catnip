@@ -157,42 +157,53 @@ export default defineCommand({
       const emoji = options.emoji as string;
       const label = options.label as string;
 
-      const config = await getConfig(guildId);
+      let error: string | null = null;
+      let roleCount = 0;
+      await kv.update<ReactRolesConfig>(kvKey(guildId), (current) => {
+        const config = current ?? { roles: [] };
+        if (config.roles.length >= MAX_ROLES) {
+          error = `Maximum of ${MAX_ROLES} roles reached (Discord button limit).`;
+          return config;
+        }
+        if (config.roles.some((r) => r.roleId === roleId)) {
+          error = `<@&${roleId}> is already configured.`;
+          return config;
+        }
+        config.roles.push({ roleId, emoji, label });
+        roleCount = config.roles.length;
+        return config;
+      });
 
-      if (config.roles.length >= MAX_ROLES) {
-        return { success: false, error: `Maximum of ${MAX_ROLES} roles reached (Discord button limit).` };
-      }
-
-      if (config.roles.some((r) => r.roleId === roleId)) {
-        return { success: false, error: `<@&${roleId}> is already configured.` };
-      }
-
-      config.roles.push({ roleId, emoji, label });
-      await kv.set(kvKey(guildId), config);
-
+      if (error) return { success: false, error };
       return {
         success: true,
         action: "added",
-        message: `Added ${emoji} **${label}** (<@&${roleId}>) to the panel. (${config.roles.length}/${MAX_ROLES})`,
+        message: `Added ${emoji} **${label}** (<@&${roleId}>) to the panel. (${roleCount}/${MAX_ROLES})`,
       };
     }
 
     if (sub === "remove") {
       const roleId = options.role as string;
-      const config = await getConfig(guildId);
 
-      const index = config.roles.findIndex((r) => r.roleId === roleId);
-      if (index === -1) {
-        return { success: false, error: `<@&${roleId}> is not in the panel.` };
-      }
+      let error: string | null = null;
+      let roleCount = 0;
+      await kv.update<ReactRolesConfig>(kvKey(guildId), (current) => {
+        const config = current ?? { roles: [] };
+        const index = config.roles.findIndex((r) => r.roleId === roleId);
+        if (index === -1) {
+          error = `<@&${roleId}> is not in the panel.`;
+          return config;
+        }
+        config.roles.splice(index, 1);
+        roleCount = config.roles.length;
+        return config;
+      });
 
-      config.roles.splice(index, 1);
-      await kv.set(kvKey(guildId), config);
-
+      if (error) return { success: false, error };
       return {
         success: true,
         action: "removed",
-        message: `Removed <@&${roleId}> from the panel. (${config.roles.length}/${MAX_ROLES})`,
+        message: `Removed <@&${roleId}> from the panel. (${roleCount}/${MAX_ROLES})`,
       };
     }
 

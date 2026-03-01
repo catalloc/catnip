@@ -24,28 +24,25 @@ export default defineComponent({
   type: "button",
 
   async execute({ customId, guildId, userId }) {
-    const existing = await kv.get<GiveawayConfig>(giveawayKey(guildId));
-
-    if (!existing || existing.ended) {
-      return { success: false, error: "This giveaway has ended." };
-    }
-
-    if (existing.entrants.includes(userId)) {
-      return { success: true, message: "You're already entered in this giveaway!" };
-    }
-
-    if (existing.entrants.length >= MAX_ENTRANTS) {
-      return { success: false, error: "This giveaway has reached the maximum number of entries." };
-    }
-
     let shouldUpdatePanel = false;
+    let error: string | null = null;
+    let alreadyEntered = false;
     const now = Date.now();
 
     const updated = await kv.update<GiveawayConfig>(giveawayKey(guildId), (config) => {
-      if (!config || config.ended) return config!;
-      if (!config.entrants.includes(userId) && config.entrants.length < MAX_ENTRANTS) {
-        config.entrants.push(userId);
+      if (!config || config.ended) {
+        error = "This giveaway has ended.";
+        return config!;
       }
+      if (config.entrants.includes(userId)) {
+        alreadyEntered = true;
+        return config;
+      }
+      if (config.entrants.length >= MAX_ENTRANTS) {
+        error = "This giveaway has reached the maximum number of entries.";
+        return config;
+      }
+      config.entrants.push(userId);
       // Only flag a panel update if enough time has passed
       const lastUpdate = (config as any).lastPanelUpdate ?? 0;
       if (now - lastUpdate >= PANEL_UPDATE_INTERVAL_MS) {
@@ -55,6 +52,10 @@ export default defineComponent({
       return config;
     });
 
+    if (error) return { success: false, error };
+    if (alreadyEntered) {
+      return { success: true, message: "You're already entered in this giveaway!" };
+    }
     if (!updated || updated.ended) {
       return { success: false, error: "This giveaway has ended." };
     }

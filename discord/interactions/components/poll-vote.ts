@@ -38,33 +38,27 @@ export default defineComponent({
       return { success: false, error: "Invalid option." };
     }
 
-    // Pre-flight check before atomic update
-    const existing = await kv.get<PollConfig>(pollKey(guildId));
-    if (!existing || existing.ended) {
-      return { success: false, error: "This poll has ended." };
-    }
-    if (optionIndex >= existing.options.length) {
-      return { success: false, error: "Invalid option." };
-    }
-
-    // Check voter cap (only for new votes)
-    const voterCount = Object.keys(existing.votes).length;
-    if (voterCount >= MAX_VOTERS && existing.votes[userId] === undefined) {
-      return { success: false, error: "This poll has reached the maximum number of voters." };
-    }
-
     let action: "removed" | "switched" | "voted" = "voted";
     let shouldUpdatePanel = false;
+    let error: string | null = null;
     const now = Date.now();
 
     const updated = await kv.update<PollConfig>(pollKey(guildId), (config) => {
-      if (!config || config.ended) return config!;
+      if (!config || config.ended) {
+        error = "This poll has ended.";
+        return config!;
+      }
+      if (optionIndex >= config.options.length) {
+        error = "Invalid option.";
+        return config;
+      }
       if (config.votes[userId] === optionIndex) {
         delete config.votes[userId];
         action = "removed";
       } else {
         // Enforce cap inside atomic update for new voters
         if (config.votes[userId] === undefined && Object.keys(config.votes).length >= MAX_VOTERS) {
+          error = "This poll has reached the maximum number of voters.";
           return config;
         }
         action = config.votes[userId] !== undefined ? "switched" : "voted";
@@ -79,6 +73,7 @@ export default defineComponent({
       return config;
     });
 
+    if (error) return { success: false, error };
     if (!updated || updated.ended) {
       return { success: false, error: "This poll has ended." };
     }

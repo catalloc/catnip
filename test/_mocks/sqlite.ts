@@ -14,6 +14,11 @@ function parseQuery(input: string | { sql: string; args?: any[] }) {
   return { sql: sql.trim(), args };
 }
 
+/** Unescape SQL LIKE backslash-escaped chars to get a literal prefix. */
+function unescapeLikePrefix(pattern: string): string {
+  return pattern.replace(/%$/, "").replace(/\\(.)/g, "$1");
+}
+
 export const sqlite = {
   async execute(input: string | { sql: string; args?: any[] }) {
     const { sql, args } = parseQuery(input);
@@ -38,7 +43,7 @@ export const sqlite = {
     if (/SELECT\s+key,\s*value\s+FROM/i.test(sql) && sql.includes("due_at") && sql.includes("LIKE ?")) {
       const now = args[0] as number;
       const pattern = args[1] as string;
-      const prefix = pattern.replace(/%$/, "");
+      const prefix = unescapeLikePrefix(pattern);
       const rows = [...store.entries()]
         .filter(([k]) => k.startsWith(prefix))
         .filter(([k]) => {
@@ -64,7 +69,7 @@ export const sqlite = {
     // SELECT key, value FROM ... WHERE key LIKE ?
     if (/SELECT\s+key,\s*value\s+FROM/i.test(sql) && sql.includes("LIKE ?")) {
       const pattern = args[0] as string;
-      const prefix = pattern.replace(/%$/, "");
+      const prefix = unescapeLikePrefix(pattern);
       const rows = [...store.entries()]
         .filter(([k]) => k.startsWith(prefix))
         .map(([k, v]) => [k, v]);

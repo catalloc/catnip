@@ -29,6 +29,7 @@ const logger = createLogger("InteractionHandler", {
   minLevel: "info",
 });
 
+const DEFERRED_TIMEOUT_MS = 9 * 60 * 1000; // 9 minutes (pro account 10-min limit, 1-min buffer)
 const MAX_COOLDOWN_ENTRIES = 10_000;
 const cooldowns = new Map<string, number>();
 let interactionCount = 0;
@@ -286,16 +287,22 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
   (async () => {
     try {
       logger.info(`${logCtx} Executing...`);
-      const result = await command.execute({
-        guildId,
-        userId,
-        options,
-        config: command.config,
-        targetId,
-        resolved,
-        memberRoles,
-        memberPermissions,
-      });
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Command execution timed out")), DEFERRED_TIMEOUT_MS),
+      );
+      const result = await Promise.race([
+        command.execute({
+          guildId,
+          userId,
+          options,
+          config: command.config,
+          targetId,
+          resolved,
+          memberRoles,
+          memberPermissions,
+        }),
+        timeout,
+      ]);
       const message = formatResultMessage(result);
       logger.info(`${logCtx} Sending followup`);
       await sendFollowup(body.application_id, body.token, message, result, command.ephemeral !== false);
