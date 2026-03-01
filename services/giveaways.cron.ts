@@ -41,7 +41,7 @@ export default async function () {
 
     // Active giveaway whose due_at has arrived — endGiveaway handles atomicity
     try {
-      const guildId = entry.key.replace("giveaway:", "");
+      const guildId = entry.key.slice("giveaway:".length);
       await withTimeout(endGiveaway(guildId), ITEM_TIMEOUT_MS);
     } catch (err) {
       console.error(`Failed to end giveaway ${entry.key}:`, err);

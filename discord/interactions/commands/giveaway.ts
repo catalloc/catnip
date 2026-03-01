@@ -104,18 +104,24 @@ export async function endGiveaway(guildId: string): Promise<void> {
   await kv.set(key, config, Date.now() + CLEANUP_DELAY_MS);
 
   // Update panel embed
-  await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
+  const patchResult = await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
     embeds: [buildGiveawayEmbed(config, true)],
     components: buildGiveawayComponents(guildId, true),
   });
+  if (!patchResult.ok) {
+    console.error(`[giveaway] Failed to update panel for ${guildId}: ${patchResult.error}`);
+  }
 
   // Announce winners
   const winnerText = config.winners!.length > 0
     ? `Congratulations ${config.winners!.map((id) => `<@${id}>`).join(", ")}! You won **${config.prize}**!`
     : `No one entered the giveaway for **${config.prize}**.`;
-  await discordBotFetch("POST", `channels/${config.channelId}/messages`, {
+  const postResult = await discordBotFetch("POST", `channels/${config.channelId}/messages`, {
     content: `🎉 **Giveaway Ended!**\n${winnerText}`,
   });
+  if (!postResult.ok) {
+    console.error(`[giveaway] Failed to announce winners for ${guildId}: ${postResult.error}`);
+  }
 }
 
 export default defineCommand({
@@ -250,15 +256,21 @@ export default defineCommand({
       await kv.set(giveawayKey(guildId), config, Date.now() + CLEANUP_DELAY_MS);
 
       // Update panel
-      await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
+      const patchRes = await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
         embeds: [buildGiveawayEmbed(config, true)],
       });
+      if (!patchRes.ok) {
+        console.error(`[giveaway] Failed to update reroll panel for ${guildId}: ${patchRes.error}`);
+      }
 
       // Announce new winners
       const winnerText = newWinners.map((id) => `<@${id}>`).join(", ");
-      await discordBotFetch("POST", `channels/${config.channelId}/messages`, {
+      const postRes = await discordBotFetch("POST", `channels/${config.channelId}/messages`, {
         content: `🎉 **Giveaway Rerolled!** New winner(s): ${winnerText} for **${config.prize}**!`,
       });
+      if (!postRes.ok) {
+        console.error(`[giveaway] Failed to announce reroll for ${guildId}: ${postRes.error}`);
+      }
 
       return { success: true, message: `Rerolled! New winners: ${winnerText}` };
     }

@@ -41,7 +41,7 @@ export default async function () {
 
     // Active poll whose due_at has arrived — endPoll handles atomicity
     try {
-      const guildId = entry.key.replace("poll:", "");
+      const guildId = entry.key.slice("poll:".length);
       await withTimeout(endPoll(guildId), ITEM_TIMEOUT_MS);
     } catch (err) {
       console.error(`Failed to end poll ${entry.key}:`, err);

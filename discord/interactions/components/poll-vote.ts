@@ -43,10 +43,16 @@ export default defineComponent({
     let error: string | null = null;
     const now = Date.now();
 
+    // Pre-check: avoid entering update() when there's nothing valid to mutate
+    const existing = await kv.get<PollConfig>(pollKey(guildId));
+    if (!existing || existing.ended) {
+      return { success: false, error: "This poll has ended." };
+    }
+
     const updated = await kv.update<PollConfig>(pollKey(guildId), (config) => {
       if (!config || config.ended) {
         error = "This poll has ended.";
-        return config!;
+        return config ?? existing; // safe fallback — no-op write
       }
       if (optionIndex >= config.options.length) {
         error = "Invalid option.";

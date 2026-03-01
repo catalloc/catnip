@@ -105,10 +105,13 @@ export async function endPoll(guildId: string): Promise<void> {
   // We exclusively own the ended state — safe to update due_at for delayed cleanup
   await kv.set(key, config, Date.now() + CLEANUP_DELAY_MS);
 
-  await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
+  const patchResult = await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
     embeds: [buildPollEmbed(config, true)],
     components: buildPollComponents(guildId, config.options, true),
   });
+  if (!patchResult.ok) {
+    console.error(`[poll] Failed to update panel for ${guildId}: ${patchResult.error}`);
+  }
 }
 
 export { buildPollEmbed };

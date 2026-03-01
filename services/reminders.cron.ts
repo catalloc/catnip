@@ -12,6 +12,7 @@ import type { Reminder } from "../discord/interactions/commands/remind.ts";
 const CONCURRENCY = 5;
 const MAX_RETRIES = 5;
 const MAX_DUE_PER_RUN = 100;
+const BACKOFF_BASE_MS = 60_000; // 1 min, 2 min, 4 min, 8 min
 
 /** Status codes that indicate the target is permanently unreachable. */
 const PERMANENT_FAILURE_CODES = [403, 404];
@@ -39,7 +40,7 @@ async function deliverBatch(
           console.error(`Failed to deliver reminder ${entry.key}: ${result.error}`);
           const retryCount = (reminder.retryCount ?? 0) + 1;
           if (retryCount < MAX_RETRIES) {
-            await kv.set(entry.key, { ...reminder, retryCount }, Date.now());
+            await kv.set(entry.key, { ...reminder, retryCount }, Date.now() + BACKOFF_BASE_MS * Math.pow(2, retryCount - 1));
           } else {
             console.warn(`Reminder ${entry.key} dropped after ${MAX_RETRIES} retries`);
           }
@@ -48,7 +49,7 @@ async function deliverBatch(
         console.error(`Failed to deliver reminder ${entry.key}:`, err);
         const retryCount = (reminder.retryCount ?? 0) + 1;
         if (retryCount < MAX_RETRIES) {
-          await kv.set(entry.key, { ...reminder, retryCount }, Date.now());
+          await kv.set(entry.key, { ...reminder, retryCount }, Date.now() + BACKOFF_BASE_MS * Math.pow(2, retryCount - 1));
         } else {
           console.warn(`Reminder ${entry.key} dropped after ${MAX_RETRIES} retries`);
         }

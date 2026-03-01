@@ -421,7 +421,10 @@ async function handleInteractiveComponent(body: any, isModal: boolean): Promise<
     return Response.json({ type: responseType, data: buildPayload(message, result) });
   } catch (error) {
     logger.error(`${isModal ? "Modal" : "Component"} error [${customId}]:`, error);
-    return ephemeralResponse(`Error: Something went wrong${ref ? ` (ref: ${ref})` : ""}`);
+    const userMsg = error instanceof UserFacingError
+      ? error.userMessage
+      : `Something went wrong${ref ? ` (ref: ${ref})` : ""}`;
+    return ephemeralResponse(`Error: ${userMsg}`);
   }
 }
 

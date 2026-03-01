@@ -12,17 +12,17 @@
 import { sqlite } from "https://esm.town/v/std/sqlite/main.ts";
 
 const TABLE = "kv_store";
-let initialized = false;
+let initPromise: Promise<void> | null = null;
 
-async function ensureTable(): Promise<void> {
-  if (initialized) return;
-  await sqlite.execute(
-    `CREATE TABLE IF NOT EXISTS ${TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL, due_at INTEGER)`,
-  );
-  await sqlite.execute(
-    `CREATE INDEX IF NOT EXISTS idx_kv_due_at ON ${TABLE} (due_at) WHERE due_at IS NOT NULL`,
-  );
-  initialized = true;
+function ensureTable(): Promise<void> {
+  return initPromise ??= (async () => {
+    await sqlite.execute(
+      `CREATE TABLE IF NOT EXISTS ${TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL, due_at INTEGER)`,
+    );
+    await sqlite.execute(
+      `CREATE INDEX IF NOT EXISTS idx_kv_due_at ON ${TABLE} (due_at) WHERE due_at IS NOT NULL`,
+    );
+  })();
 }
 
 function escapeLikePrefix(prefix: string): string {
