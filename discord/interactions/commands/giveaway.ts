@@ -16,6 +16,8 @@ import { discordBotFetch } from "../../discord-api.ts";
 import { parseDuration } from "../../helpers/duration.ts";
 import { secureRandomIndex } from "../../helpers/crypto.ts";
 
+const CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 export interface GiveawayConfig {
   prize: string;
   channelId: string;
@@ -90,7 +92,7 @@ export async function endGiveaway(guildId: string, config: GiveawayConfig): Prom
   const winners = pickWinners(config.entrants, config.winnersCount);
   config.ended = true;
   config.winners = winners;
-  await kv.set(giveawayKey(guildId), config);
+  await kv.set(giveawayKey(guildId), config, Date.now() + CLEANUP_DELAY_MS);
 
   // Update panel embed
   await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
@@ -236,7 +238,7 @@ export default defineCommand({
 
       const newWinners = pickWinners(config.entrants, config.winnersCount);
       config.winners = newWinners;
-      await kv.set(giveawayKey(guildId), config);
+      await kv.set(giveawayKey(guildId), config, Date.now() + CLEANUP_DELAY_MS);
 
       // Update panel
       await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {

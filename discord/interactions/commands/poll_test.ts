@@ -28,7 +28,7 @@ Deno.test("buildPollEmbed: active poll", () => {
     channelId: "c1",
     messageId: "m1",
     createdBy: "u1",
-    endsAt: null,
+    endsAt: Date.now() + 86400000,
     ended: false,
   };
   const embed = buildPollEmbed(config);
@@ -53,7 +53,7 @@ Deno.test("buildPollEmbed: zero votes", () => {
     channelId: "c1",
     messageId: "m1",
     createdBy: "u1",
-    endsAt: null,
+    endsAt: Date.now() + 86400000,
     ended: false,
   };
   const embed = buildPollEmbed(config);
@@ -84,7 +84,7 @@ Deno.test("buildPollEmbed: ended poll shows results", () => {
     channelId: "c1",
     messageId: "m1",
     createdBy: "u1",
-    endsAt: null,
+    endsAt: Date.now() + 86400000,
     ended: false,
   };
   const embed = buildPollEmbed(config, true);

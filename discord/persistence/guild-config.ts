@@ -9,6 +9,7 @@ import { kv } from "./kv.ts";
 
 const KV_PREFIX = "guild_config:";
 const MAX_ADMIN_ROLES = 25;
+const MAX_ENABLED_COMMANDS = 50;
 
 export interface GuildConfig {
   guildId: string;
@@ -33,7 +34,7 @@ function createDefault(guildId: string): GuildConfig {
   };
 }
 
-export { MAX_ADMIN_ROLES };
+export { MAX_ADMIN_ROLES, MAX_ENABLED_COMMANDS };
 
 export const guildConfig = {
   async get(guildId: string): Promise<GuildConfig | null> {
@@ -104,6 +105,10 @@ export const guildConfig = {
     await kv.update<GuildConfig>(kvKey(guildId), (current) => {
       const config = current ?? createDefault(guildId);
       if (config.enabledCommands.includes(commandName)) {
+        enabled = false;
+        return config;
+      }
+      if (config.enabledCommands.length >= MAX_ENABLED_COMMANDS) {
         enabled = false;
         return config;
       }

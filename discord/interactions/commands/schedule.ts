@@ -24,9 +24,27 @@ export interface ScheduledMessage {
 
 const MAX_SCHEDULED_PER_GUILD = 25;
 const KV_PREFIX = "scheduled-msg:";
+const AUTOCOMPLETE_CACHE_TTL_MS = 30_000; // 30 seconds
+
+const autocompleteCache = new Map<string, { data: Array<{ key: string; value: unknown }>; expiresAt: number }>();
 
 function kvPrefix(guildId: string): string {
   return `${KV_PREFIX}${guildId}:`;
+}
+
+async function getScheduledMessagesCached(guildId: string): Promise<Array<{ key: string; value: unknown }>> {
+  const prefix = kvPrefix(guildId);
+  const cached = autocompleteCache.get(prefix);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.data;
+  }
+  const data = await kv.list(prefix);
+  autocompleteCache.set(prefix, { data, expiresAt: Date.now() + AUTOCOMPLETE_CACHE_TTL_MS });
+  return data;
+}
+
+function invalidateScheduleCache(guildId: string): void {
+  autocompleteCache.delete(kvPrefix(guildId));
 }
 
 export { KV_PREFIX };
@@ -123,6 +141,7 @@ export default defineCommand({
       };
 
       await kv.set(key, msg, sendAt);
+      invalidateScheduleCache(guildId);
 
       const unixSeconds = Math.floor(sendAt / 1000);
       return { success: true, message: `Message scheduled for <#${channelId}> <t:${unixSeconds}:R>.` };
@@ -160,6 +179,7 @@ export default defineCommand({
       }
 
       await kv.delete(id);
+      invalidateScheduleCache(guildId);
       return { success: true, message: "Scheduled message cancelled." };
     }
 
@@ -177,7 +197,7 @@ export default defineCommand({
 
     // Return a promise — we need to fetch from KV
     return (async () => {
-      const entries = await kv.list(kvPrefix(guildId));
+      const entries = await getScheduledMessagesCached(guildId);
       const choices = entries
         .map((e) => {
           const msg = e.value as ScheduledMessage;

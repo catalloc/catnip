@@ -21,9 +21,14 @@ export interface PollConfig {
   channelId: string;
   messageId: string;
   createdBy: string;
-  endsAt: number | null; // null = no auto-end
+  endsAt: number;
   ended: boolean;
 }
+
+const DEFAULT_POLL_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const MAX_POLL_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const MAX_OPTION_LENGTH = 80;
+const CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export function pollKey(guildId: string): string {
   return `poll:${guildId}`;
@@ -51,9 +56,7 @@ function buildPollEmbed(config: PollConfig, ended = false) {
     return `🔵 **${opt}** — ${counts[i]} vote${counts[i] !== 1 ? "s" : ""}`;
   });
 
-  const timeText = config.endsAt
-    ? `Ends <t:${Math.floor(config.endsAt / 1000)}:R>`
-    : "No time limit";
+  const timeText = `Ends <t:${Math.floor(config.endsAt / 1000)}:R>`;
 
   const description = [
     ...optionLines,
@@ -90,7 +93,7 @@ export function buildPollComponents(guildId: string, options: string[], ended = 
 
 export async function endPoll(guildId: string, config: PollConfig): Promise<void> {
   config.ended = true;
-  await kv.set(pollKey(guildId), config);
+  await kv.set(pollKey(guildId), config, Date.now() + CLEANUP_DELAY_MS);
 
   await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
     embeds: [buildPollEmbed(config, true)],
@@ -132,7 +135,7 @@ export default defineCommand({
         },
         {
           name: "duration",
-          description: "Auto-end time (e.g. 1h, 2d). Omit for no time limit.",
+          description: "Auto-end time (e.g. 1h, 2d). Default: 7 days, max: 30 days.",
           type: OptionTypes.STRING,
           required: false,
         },
@@ -160,7 +163,12 @@ export default defineCommand({
       const durationStr = options.duration as string | undefined;
 
       // Parse and validate options
-      const choices = optionsStr.split(",").map((s) => s.trim()).filter(Boolean);
+      const choices = optionsStr.split(",").map((s) => {
+        const trimmed = s.trim();
+        return trimmed.length > MAX_OPTION_LENGTH
+          ? trimmed.slice(0, MAX_OPTION_LENGTH - 3) + "..."
+          : trimmed;
+      }).filter(Boolean);
       if (choices.length < 2) {
         return { success: false, error: "Provide at least 2 comma-separated options." };
       }
@@ -172,15 +180,16 @@ export default defineCommand({
         return { success: false, error: "Duplicate options are not allowed." };
       }
 
-      // Parse optional duration
-      let endsAt: number | null = null;
+      // Parse optional duration (default 7 days, max 30 days)
+      let durationMs = DEFAULT_POLL_DURATION_MS;
       if (durationStr) {
         const ms = parseDuration(durationStr);
-        if (!ms) {
+        if (!ms || ms > MAX_POLL_DURATION_MS) {
           return { success: false, error: "Invalid duration. Use formats like `1h`, `30m`, `2d`, `1d12h`. Max 30 days." };
         }
-        endsAt = Date.now() + ms;
+        durationMs = ms;
       }
+      const endsAt = Date.now() + durationMs;
 
       // Check for existing active poll
       const existing = await kv.get<PollConfig>(pollKey(guildId));
@@ -211,12 +220,9 @@ export default defineCommand({
       }
 
       config.messageId = post.data.id;
-      await kv.set(pollKey(guildId), config, config.endsAt ?? undefined);
+      await kv.set(pollKey(guildId), config, config.endsAt);
 
-      const timeText = endsAt
-        ? `Ends <t:${Math.floor(endsAt / 1000)}:R>.`
-        : "No time limit.";
-      return { success: true, message: `Poll started in <#${channelId}>! ${timeText}` };
+      return { success: true, message: `Poll started in <#${channelId}>! Ends <t:${Math.floor(endsAt / 1000)}:R>.` };
     }
 
     if (sub === "end") {

@@ -13,7 +13,16 @@ export default async function () {
 
   for (const entry of entries) {
     const config = entry.value as PollConfig;
-    if (config.ended) continue;
+
+    if (config.ended) {
+      // Past the 24h grace period — clean up dead data
+      try {
+        await kv.delete(entry.key);
+      } catch (err) {
+        console.error(`Failed to clean up ended poll ${entry.key}:`, err);
+      }
+      continue;
+    }
 
     try {
       const guildId = entry.key.replace("poll:", "");

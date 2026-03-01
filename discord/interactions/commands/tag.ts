@@ -196,24 +196,28 @@ export default defineCommand({
 
       const name = sanitizeTagName((options.name as string).replace(/\s+/g, "-"));
       const content = options.content as string;
-      const tags = await getTags(guildId);
 
-      if (tags[name]) {
-        return { success: false, error: `Tag \`${name}\` already exists. Use \`/tag edit\` to update it.` };
-      }
-
-      if (Object.keys(tags).length >= MAX_TAGS) {
-        return { success: false, error: `Maximum of ${MAX_TAGS} tags reached.` };
-      }
-
-      tags[name] = {
-        content,
-        createdBy: userId,
-        createdAt: new Date().toISOString(),
-      };
-      await kv.set(kvKey(guildId), tags);
+      let error: string | null = null;
+      await kv.update<TagStore>(kvKey(guildId), (current) => {
+        const tags = current ?? {};
+        if (tags[name]) {
+          error = `Tag \`${name}\` already exists. Use \`/tag edit\` to update it.`;
+          return tags;
+        }
+        if (Object.keys(tags).length >= MAX_TAGS) {
+          error = `Maximum of ${MAX_TAGS} tags reached.`;
+          return tags;
+        }
+        tags[name] = {
+          content,
+          createdBy: userId,
+          createdAt: new Date().toISOString(),
+        };
+        return tags;
+      });
       invalidateTagCache(guildId);
 
+      if (error) return { success: false, error };
       return { success: true, message: `Tag \`${name}\` created.` };
     }
 
@@ -224,16 +228,20 @@ export default defineCommand({
 
       const name = sanitizeTagName(options.name as string);
       const content = options.content as string;
-      const tags = await getTags(guildId);
 
-      if (!tags[name]) {
-        return { success: false, error: `Tag \`${name}\` not found.` };
-      }
-
-      tags[name].content = content;
-      await kv.set(kvKey(guildId), tags);
+      let error: string | null = null;
+      await kv.update<TagStore>(kvKey(guildId), (current) => {
+        const tags = current ?? {};
+        if (!tags[name]) {
+          error = `Tag \`${name}\` not found.`;
+          return tags;
+        }
+        tags[name].content = content;
+        return tags;
+      });
       invalidateTagCache(guildId);
 
+      if (error) return { success: false, error };
       return { success: true, message: `Tag \`${name}\` updated.` };
     }
 
@@ -243,16 +251,20 @@ export default defineCommand({
       }
 
       const name = sanitizeTagName(options.name as string);
-      const tags = await getTags(guildId);
 
-      if (!tags[name]) {
-        return { success: false, error: `Tag \`${name}\` not found.` };
-      }
-
-      delete tags[name];
-      await kv.set(kvKey(guildId), tags);
+      let error: string | null = null;
+      await kv.update<TagStore>(kvKey(guildId), (current) => {
+        const tags = current ?? {};
+        if (!tags[name]) {
+          error = `Tag \`${name}\` not found.`;
+          return tags;
+        }
+        delete tags[name];
+        return tags;
+      });
       invalidateTagCache(guildId);
 
+      if (error) return { success: false, error };
       return { success: true, message: `Tag \`${name}\` deleted.` };
     }
 
