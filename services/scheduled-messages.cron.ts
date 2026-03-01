@@ -12,6 +12,9 @@ import { KV_PREFIX } from "../discord/interactions/commands/schedule.ts";
 
 const CONCURRENCY = 5;
 
+/** Status codes that indicate the target is permanently unreachable. */
+const PERMANENT_FAILURE_CODES = [403, 404];
+
 async function deliverBatch(
   batch: Array<{ key: string; value: unknown }>,
 ): Promise<void> {
@@ -19,10 +22,17 @@ async function deliverBatch(
     batch.map(async (entry) => {
       const msg = entry.value as ScheduledMessage;
       try {
-        await discordBotFetch("POST", `channels/${msg.channelId}/messages`, {
+        const result = await discordBotFetch("POST", `channels/${msg.channelId}/messages`, {
           content: msg.content,
         });
-        await kv.delete(entry.key);
+        if (result.ok) {
+          await kv.delete(entry.key);
+        } else if (result.status && PERMANENT_FAILURE_CODES.includes(result.status)) {
+          console.warn(`Scheduled message ${entry.key} deleted: channel inaccessible (${result.status})`);
+          await kv.delete(entry.key);
+        } else {
+          console.error(`Failed to send scheduled message ${entry.key}: ${result.error}`);
+        }
       } catch (err) {
         console.error(`Failed to send scheduled message ${entry.key}:`, err);
       }

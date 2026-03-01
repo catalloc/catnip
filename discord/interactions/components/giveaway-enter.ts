@@ -16,6 +16,7 @@ import { type GiveawayConfig, giveawayKey } from "../commands/giveaway.ts";
 import { EmbedColors } from "../../constants.ts";
 
 const PANEL_UPDATE_INTERVAL_MS = 5_000;
+const MAX_ENTRANTS = 10_000;
 
 export default defineComponent({
   customId: "giveaway-enter:",
@@ -33,12 +34,16 @@ export default defineComponent({
       return { success: true, message: "You're already entered in this giveaway!" };
     }
 
+    if (existing.entrants.length >= MAX_ENTRANTS) {
+      return { success: false, error: "This giveaway has reached the maximum number of entries." };
+    }
+
     let shouldUpdatePanel = false;
     const now = Date.now();
 
     const updated = await kv.update<GiveawayConfig>(giveawayKey(guildId), (config) => {
       if (!config || config.ended) return config!;
-      if (!config.entrants.includes(userId)) {
+      if (!config.entrants.includes(userId) && config.entrants.length < MAX_ENTRANTS) {
         config.entrants.push(userId);
       }
       // Only flag a panel update if enough time has passed

@@ -7,7 +7,9 @@
 import { defineCommand, OptionTypes } from "../define-command.ts";
 import { kv } from "../../persistence/kv.ts";
 
-const KV_KEY = "counter:global";
+function kvKey(guildId: string): string {
+  return `counter:${guildId}`;
+}
 
 export default defineCommand({
   name: "counter",
@@ -26,15 +28,15 @@ export default defineCommand({
   deferred: false,
   ephemeral: false,
 
-  async execute({ options }) {
+  async execute({ guildId, options }) {
     const action = (options.action as string | undefined)?.toLowerCase();
 
     if (action === "reset") {
-      await kv.set(KV_KEY, 0);
+      await kv.set(kvKey(guildId), 0);
       return { success: true, message: "Counter reset to **0**." };
     }
 
-    const next = await kv.update<number>(KV_KEY, (current) => (current ?? 0) + 1);
+    const next = await kv.update<number>(kvKey(guildId), (current) => (current ?? 0) + 1);
     return { success: true, message: `Counter: **${next}**` };
   },
 });

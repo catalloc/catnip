@@ -180,10 +180,16 @@ export default defineCommand({
     // --- admin:add ---
     if (sub === "admin:add") {
       const roleId = options.role as string;
-      const added = await guildConfig.addAdminRole(guildId, roleId);
-      return added
-        ? { success: true, message: `Added <@&${roleId}> as an admin role.` }
-        : { success: false, error: `<@&${roleId}> is already an admin role.` };
+      const currentRoles = await guildConfig.getAdminRoleIds(guildId);
+      if (currentRoles.includes(roleId)) {
+        return { success: false, error: `<@&${roleId}> is already an admin role.` };
+      }
+      const { MAX_ADMIN_ROLES } = await import("../../persistence/guild-config.ts");
+      if (currentRoles.length >= MAX_ADMIN_ROLES) {
+        return { success: false, error: `Maximum of ${MAX_ADMIN_ROLES} admin roles reached.` };
+      }
+      await guildConfig.addAdminRole(guildId, roleId);
+      return { success: true, message: `Added <@&${roleId}> as an admin role.` };
     }
 
     // --- admin:remove ---

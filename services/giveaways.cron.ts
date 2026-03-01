@@ -9,11 +9,11 @@ import { kv } from "../discord/persistence/kv.ts";
 import { type GiveawayConfig, endGiveaway } from "../discord/interactions/commands/giveaway.ts";
 
 export default async function () {
-  const entries = await kv.list("giveaway:");
+  const entries = await kv.listDue(Date.now(), "giveaway:");
 
   for (const entry of entries) {
     const config = entry.value as GiveawayConfig;
-    if (config.ended || config.endsAt > Date.now()) continue;
+    if (config.ended) continue;
 
     try {
       const guildId = entry.key.replace("giveaway:", "");

@@ -25,6 +25,7 @@ export interface CommandOption {
   required: boolean;
   autocomplete?: boolean;
   min_length?: number;
+  max_length?: number;
   options?: CommandOption[];
 }
 
@@ -58,6 +59,8 @@ export interface CommandContext<TConfig = Record<string, any>> {
   resolved?: Record<string, any>;
   /** Member's role IDs in the current guild */
   memberRoles?: string[];
+  /** Member's computed permissions bitfield (string) */
+  memberPermissions?: string;
 }
 
 /**

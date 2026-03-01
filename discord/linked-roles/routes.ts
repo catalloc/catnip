@@ -107,7 +107,6 @@ export async function handleLinkedRolesCallback(
     return linkedRolesSuccessPage(displayName);
   } catch (err) {
     console.error("[linked-roles] callback error:", err);
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return linkedRolesErrorPage(message);
+    return linkedRolesErrorPage("Something went wrong while verifying your account. Please try again.");
   }
 }

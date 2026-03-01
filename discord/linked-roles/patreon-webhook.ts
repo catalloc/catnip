@@ -31,7 +31,7 @@ async function verifySignature(
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
-  return timingSafeEqual(hex, signature);
+  return await timingSafeEqual(hex, signature);
 }
 
 /** Extract the Discord user ID from the Patreon webhook payload. */

@@ -5,6 +5,7 @@
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
+import { secureRandomIndex } from "../../helpers/crypto.ts";
 
 export default defineCommand({
   name: "pick",
@@ -29,7 +30,7 @@ export default defineCommand({
     if (raw.length < 2) {
       return { success: false, error: "Provide at least 2 comma-separated choices." };
     }
-    const pick = raw[Math.floor(Math.random() * raw.length)];
+    const pick = raw[secureRandomIndex(raw.length)];
     return { success: true, message: `I picked: **${pick}**` };
   },
 });

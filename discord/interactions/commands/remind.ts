@@ -37,6 +37,7 @@ export default defineCommand({
       description: "What to remind you about",
       type: OptionTypes.STRING,
       required: true,
+      max_length: 500,
     },
   ],
 

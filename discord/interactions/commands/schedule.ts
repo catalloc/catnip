@@ -59,6 +59,7 @@ export default defineCommand({
           description: "Message content to send",
           type: OptionTypes.STRING,
           required: true,
+          max_length: 2000,
         },
       ],
     },

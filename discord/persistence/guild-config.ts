@@ -8,6 +8,7 @@
 import { kv } from "./kv.ts";
 
 const KV_PREFIX = "guild_config:";
+const MAX_ADMIN_ROLES = 25;
 
 export interface GuildConfig {
   guildId: string;
@@ -31,6 +32,8 @@ function createDefault(guildId: string): GuildConfig {
     updatedAt: now,
   };
 }
+
+export { MAX_ADMIN_ROLES };
 
 export const guildConfig = {
   async get(guildId: string): Promise<GuildConfig | null> {
@@ -61,6 +64,10 @@ export const guildConfig = {
     await kv.update<GuildConfig>(kvKey(guildId), (current) => {
       const config = current ?? createDefault(guildId);
       if (config.adminRoleIds.includes(roleId)) {
+        added = false;
+        return config;
+      }
+      if (config.adminRoleIds.length >= MAX_ADMIN_ROLES) {
         added = false;
         return config;
       }

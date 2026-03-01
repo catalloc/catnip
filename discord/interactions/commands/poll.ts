@@ -116,6 +116,7 @@ export default defineCommand({
           description: "The poll question",
           type: OptionTypes.STRING,
           required: true,
+          max_length: 256,
         },
         {
           name: "options",
@@ -210,7 +211,7 @@ export default defineCommand({
       }
 
       config.messageId = post.data.id;
-      await kv.set(pollKey(guildId), config);
+      await kv.set(pollKey(guildId), config, config.endsAt ?? undefined);
 
       const timeText = endsAt
         ? `Ends <t:${Math.floor(endsAt / 1000)}:R>.`

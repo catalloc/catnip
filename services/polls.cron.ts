@@ -9,12 +9,11 @@ import { kv } from "../discord/persistence/kv.ts";
 import { type PollConfig, endPoll } from "../discord/interactions/commands/poll.ts";
 
 export default async function () {
-  const entries = await kv.list("poll:");
-  const now = Date.now();
+  const entries = await kv.listDue(Date.now(), "poll:");
 
   for (const entry of entries) {
     const config = entry.value as PollConfig;
-    if (config.ended || config.endsAt === null || config.endsAt > now) continue;
+    if (config.ended) continue;
 
     try {
       const guildId = entry.key.replace("poll:", "");

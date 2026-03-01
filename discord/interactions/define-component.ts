@@ -40,6 +40,8 @@ export interface ComponentHandler {
   match: "exact" | "prefix";
   /** Component type */
   type: "button" | "select" | "modal";
+  /** If true, only guild admins can use this component */
+  adminOnly?: boolean;
   /** Execute the component interaction */
   execute: (ctx: ComponentContext) => Promise<ComponentResult>;
 }

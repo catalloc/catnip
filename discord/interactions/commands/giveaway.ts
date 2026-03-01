@@ -123,6 +123,7 @@ export default defineCommand({
           description: "What are you giving away?",
           type: OptionTypes.STRING,
           required: true,
+          max_length: 256,
         },
         {
           name: "duration",
@@ -205,7 +206,7 @@ export default defineCommand({
       }
 
       config.messageId = post.data.id;
-      await kv.set(giveawayKey(guildId), config);
+      await kv.set(giveawayKey(guildId), config, config.endsAt);
 
       const unixSeconds = Math.floor(endsAt / 1000);
       return { success: true, message: `Giveaway for **${prize}** started in <#${channelId}>! Ends <t:${unixSeconds}:R>.` };

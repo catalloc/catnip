@@ -6,6 +6,13 @@
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
 
+/** Strip @everyone, @here, and role/user mentions to prevent abuse */
+function sanitizeMentions(text: string): string {
+  return text
+    .replace(/@(everyone|here)/gi, "@\u200B$1")
+    .replace(/<@[&!]?\d+>/g, "[mention removed]");
+}
+
 export default defineCommand({
   name: "slow-echo",
   description: "Echo a message after a delay (deferred example)",
@@ -33,7 +40,7 @@ export default defineCommand({
   cooldown: 10,
 
   async execute({ options }) {
-    const message = options?.message as string;
+    const message = sanitizeMentions(options?.message as string);
     const delay = Math.min(10, Math.max(1, (options?.delay as number) || 3));
 
     await new Promise((r) => setTimeout(r, delay * 1000));

@@ -33,19 +33,13 @@ import { timingSafeEqual } from "../discord/helpers/crypto.ts";
 import { finalizeAllLoggers } from "../discord/webhook/logger.ts";
 import "../discord/linked-roles/verifiers/always-verified.ts"; // side-effect: registers verifier
 
-function checkPassword(req: Request): Response | null {
+async function checkPassword(req: Request): Promise<Response | null> {
   if (!CONFIG.adminPassword) {
     return Response.json({ error: "ADMIN_PASSWORD not configured" }, { status: 503 });
   }
-  // Accept password via Authorization header (preferred) or query param (legacy)
   const header = req.headers.get("Authorization");
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
-  const url = new URL(req.url);
-  const queryToken = url.searchParams.get("password");
-  const password = CONFIG.adminPassword;
-  const tokenMatch = token !== null && timingSafeEqual(token, password);
-  const queryMatch = queryToken !== null && timingSafeEqual(queryToken, password);
-  if (!tokenMatch && !queryMatch) {
+  if (!token || !(await timingSafeEqual(token, CONFIG.adminPassword))) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   return null;
@@ -63,7 +57,7 @@ export default async function(req: Request): Promise<Response> {
       if (path === "/linked-roles/callback") return handleLinkedRolesCallback(req);
 
       if (url.searchParams.get("register") === "true") {
-        const authError = checkPassword(req);
+        const authError = await checkPassword(req);
         if (authError) return authError;
         const results = await registerAllCommandsFromRegistry();
         const ok = results.filter((r) => r.success);
@@ -72,14 +66,14 @@ export default async function(req: Request): Promise<Response> {
       }
 
       if (url.searchParams.get("register-metadata") === "true") {
-        const authError = checkPassword(req);
+        const authError = await checkPassword(req);
         if (authError) return authError;
         const result = await registerMetadataSchema();
         return Response.json(result, { status: result.ok ? 200 : 500 });
       }
 
       if (url.searchParams.get("discover") === "true") {
-        const authError = checkPassword(req);
+        const authError = await checkPassword(req);
         if (authError) return authError;
         const manifest = await discover(import.meta.url);
         return Response.json({

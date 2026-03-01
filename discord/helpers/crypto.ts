@@ -6,22 +6,28 @@
 
 /**
  * Constant-time string comparison to prevent timing attacks.
- * Both strings are compared in full regardless of where they differ.
+ * Uses HMAC comparison to avoid leaking length information.
  */
-export function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    // Compare `b` against itself to keep constant time relative to length,
-    // but still return false for length mismatch.
-    let _ = 0;
-    for (let i = 0; i < b.length; i++) {
-      _ |= b.charCodeAt(i) ^ b.charCodeAt(i);
-    }
-    return false;
-  }
-
+export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode("timing-safe-comparison-key");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const [macA, macB] = await Promise.all([
+    crypto.subtle.sign("HMAC", key, encoder.encode(a)),
+    crypto.subtle.sign("HMAC", key, encoder.encode(b)),
+  ]);
+  const viewA = new Uint8Array(macA);
+  const viewB = new Uint8Array(macB);
+  if (viewA.length !== viewB.length) return false;
   let mismatch = 0;
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < viewA.length; i++) {
+    mismatch |= viewA[i] ^ viewB[i];
   }
   return mismatch === 0;
 }

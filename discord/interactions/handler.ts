@@ -165,6 +165,11 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
   const guildId = body.guild_id;
   const userId = body.member?.user?.id || body.user?.id;
 
+  // Guild-only guard — guild-scoped commands cannot be used in DMs
+  if (command.registration.type === "guild" && !body.guild_id) {
+    return ephemeralResponse("This command can only be used in a server.");
+  }
+
   // Admin-only guard
   if (command.adminOnly) {
     if (!body.guild_id) {
@@ -188,7 +193,9 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
     }
   }
 
-  if (command.cooldown && command.cooldown > 0) {
+  const DEFAULT_COOLDOWN = 3;
+  const cooldownSeconds = command.cooldown ?? DEFAULT_COOLDOWN;
+  if (cooldownSeconds > 0) {
     const cooldownKey = `${commandName}:${userId}`;
     const expiry = cooldowns.get(cooldownKey);
     if (expiry) {
@@ -200,7 +207,7 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
       }
       cooldowns.delete(cooldownKey);
     }
-    cooldowns.set(cooldownKey, Date.now() + command.cooldown * 1000);
+    cooldowns.set(cooldownKey, Date.now() + cooldownSeconds * 1000);
   }
 
   // Extract command options with subcommand support
@@ -230,6 +237,7 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
   const resolved = body.data.resolved;
 
   const memberRoles: string[] = body.member?.roles ?? [];
+  const memberPermissions: string | undefined = body.member?.permissions;
 
   // Fast-command path — respond immediately without deferring
   if (command.deferred === false) {
@@ -242,6 +250,7 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
         targetId,
         resolved,
         memberRoles,
+        memberPermissions,
       });
 
       // Modal response (only valid for non-deferred commands)
@@ -285,6 +294,7 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
         targetId,
         resolved,
         memberRoles,
+        memberPermissions,
       });
       const message = formatResultMessage(result);
       logger.info(`${logCtx} Sending followup`);
@@ -359,6 +369,18 @@ async function handleInteractiveComponent(body: any, isModal: boolean): Promise<
   const handler = getComponentHandler(customId, handlerType);
   if (!handler) {
     return ephemeralResponse(`No handler for this ${isModal ? "modal" : "component"}`);
+  }
+
+  if (handler.adminOnly) {
+    const userId = body.member?.user?.id || body.user?.id;
+    if (!body.guild_id) {
+      return ephemeralResponse("This action can only be used in a server.");
+    }
+    const memberRoles: string[] = body.member?.roles || [];
+    const authorized = await isGuildAdmin(body.guild_id, userId, memberRoles, body.member?.permissions);
+    if (!authorized) {
+      return ephemeralResponse("You are not authorized to use this action.");
+    }
   }
 
   try {

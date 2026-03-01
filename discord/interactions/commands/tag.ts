@@ -101,6 +101,7 @@ export default defineCommand({
           type: OptionTypes.STRING,
           required: true,
           min_length: 1,
+          max_length: 2000,
         },
       ],
     },
@@ -123,6 +124,7 @@ export default defineCommand({
           type: OptionTypes.STRING,
           required: true,
           min_length: 1,
+          max_length: 2000,
         },
       ],
     },
@@ -171,7 +173,7 @@ export default defineCommand({
     })();
   },
 
-  async execute({ guildId, userId, options, memberRoles }) {
+  async execute({ guildId, userId, options, memberRoles, memberPermissions }) {
     const sub = options?.subcommand as string | undefined;
     const roles = memberRoles ?? [];
 
@@ -188,7 +190,7 @@ export default defineCommand({
     }
 
     if (sub === "add") {
-      if (!(await isGuildAdmin(guildId, userId, roles))) {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
         return { success: false, error: "You need admin permissions to add tags." };
       }
 
@@ -216,7 +218,7 @@ export default defineCommand({
     }
 
     if (sub === "edit") {
-      if (!(await isGuildAdmin(guildId, userId, roles))) {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
         return { success: false, error: "You need admin permissions to edit tags." };
       }
 
@@ -236,7 +238,7 @@ export default defineCommand({
     }
 
     if (sub === "remove") {
-      if (!(await isGuildAdmin(guildId, userId, roles))) {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
         return { success: false, error: "You need admin permissions to remove tags." };
       }
 

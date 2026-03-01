@@ -6,6 +6,13 @@
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
 
+/** Strip @everyone, @here, and role/user mentions to prevent abuse */
+function sanitizeMentions(text: string): string {
+  return text
+    .replace(/@(everyone|here)/gi, "@\u200B$1")
+    .replace(/<@[&!]?\d+>/g, "[mention removed]");
+}
+
 export default defineCommand({
   name: "echo",
   description: "Repeat a message back to you",
@@ -26,7 +33,7 @@ export default defineCommand({
   ephemeral: false,
 
   async execute({ options }) {
-    const message = options?.message ?? "";
+    const message = sanitizeMentions(options?.message ?? "");
     return { success: true, message: `> ${message}` };
   },
 });
