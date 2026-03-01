@@ -164,15 +164,28 @@ export class DiscordLogger {
   }
 }
 
+const _instances: DiscordLogger[] = [];
+
 /**
- * Create a logger for a specific service/module
+ * Create a logger for a specific service/module.
+ * Instances are tracked so they can all be finalized via `finalizeAllLoggers()`.
  */
 export function createLogger(
   context: string,
   options?: Partial<Omit<LoggerConfig, "context">>,
 ): DiscordLogger {
-  return new DiscordLogger({
+  const logger = new DiscordLogger({
     context,
     ...options,
   });
+  _instances.push(logger);
+  return logger;
+}
+
+/**
+ * Flush all logger instances. Call at the end of request handling
+ * to ensure buffered logs are sent before the isolate terminates.
+ */
+export async function finalizeAllLoggers(): Promise<void> {
+  await Promise.allSettled(_instances.map((l) => l.finalize()));
 }

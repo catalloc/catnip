@@ -193,6 +193,7 @@ async function sendToDiscordApi(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: requestBody,
+        signal: AbortSignal.timeout(30_000),
       });
 
       if (response.ok) {

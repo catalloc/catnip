@@ -14,6 +14,7 @@ import { ADMIN_ROLE_ID, CONFIG, EmbedColors } from "../../constants.ts";
 import { kv } from "../../persistence/kv.ts";
 import { discordBotFetch } from "../../discord-api.ts";
 import { parseDuration } from "../../helpers/duration.ts";
+import { secureRandomIndex } from "../../helpers/crypto.ts";
 
 export interface GiveawayConfig {
   prize: string;
@@ -79,7 +80,7 @@ export function pickWinners(entrants: string[], count: number): string[] {
   const winners: string[] = [];
   const picks = Math.min(count, pool.length);
   for (let i = 0; i < picks; i++) {
-    const idx = Math.floor(Math.random() * pool.length);
+    const idx = secureRandomIndex(pool.length);
     winners.push(pool.splice(idx, 1)[0]);
   }
   return winners;

@@ -9,6 +9,7 @@
 import { CONFIG } from "../constants.ts";
 import { kv } from "../persistence/kv.ts";
 import { patreonKvKey, type PatreonRecord } from "./verifiers/patreon.ts";
+import { timingSafeEqual } from "../helpers/crypto.ts";
 
 /**
  * Verify the Patreon webhook signature (MD5-HMAC in the X-Patreon-Signature header).
@@ -30,7 +31,7 @@ async function verifySignature(
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
-  return hex === signature;
+  return timingSafeEqual(hex, signature);
 }
 
 /** Extract the Discord user ID from the Patreon webhook payload. */
@@ -97,7 +98,14 @@ export async function handlePatreonWebhook(req: Request): Promise<Response> {
   }
 
   const event = req.headers.get("X-Patreon-Event");
-  const payload = JSON.parse(body) as Record<string, unknown>;
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(body) as Record<string, unknown>;
+  } catch {
+    return Response.json({ error: "Malformed JSON body" }, { status: 400 });
+  }
+
   const discordId = extractDiscordId(payload);
 
   if (!discordId) {

@@ -28,6 +28,9 @@ interface TagStore {
 
 const MAX_TAGS = 50;
 const MAX_TAG_NAME_LENGTH = 64;
+const AUTOCOMPLETE_CACHE_TTL_MS = 30_000; // 30 seconds
+
+const tagCache = new Map<string, { data: TagStore; expiresAt: number }>();
 
 function kvKey(guildId: string): string {
   return `tags:${guildId}`;
@@ -40,6 +43,23 @@ function sanitizeTagName(raw: string): string {
 
 async function getTags(guildId: string): Promise<TagStore> {
   return (await kv.get<TagStore>(kvKey(guildId))) ?? {};
+}
+
+/** Cached read for autocomplete — avoids hitting KV on every keystroke. */
+async function getTagsCached(guildId: string): Promise<TagStore> {
+  const key = kvKey(guildId);
+  const cached = tagCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.data;
+  }
+  const data = await getTags(guildId);
+  tagCache.set(key, { data, expiresAt: Date.now() + AUTOCOMPLETE_CACHE_TTL_MS });
+  return data;
+}
+
+/** Invalidate the autocomplete cache for a guild (call after mutations). */
+function invalidateTagCache(guildId: string): void {
+  tagCache.delete(kvKey(guildId));
 }
 
 function isAdmin(memberRoles: string[], userId: string): boolean {
@@ -146,7 +166,7 @@ export default defineCommand({
     const query = (focused?.value as string || "").toLowerCase();
 
     return (async () => {
-      const tags = await getTags(guildId);
+      const tags = await getTagsCached(guildId);
       const names = Object.keys(tags);
       const filtered = query
         ? names.filter((n) => n.includes(query))
@@ -196,6 +216,7 @@ export default defineCommand({
         createdAt: new Date().toISOString(),
       };
       await kv.set(kvKey(guildId), tags);
+      invalidateTagCache(guildId);
 
       return { success: true, message: `Tag \`${name}\` created.` };
     }
@@ -215,6 +236,7 @@ export default defineCommand({
 
       tags[name].content = content;
       await kv.set(kvKey(guildId), tags);
+      invalidateTagCache(guildId);
 
       return { success: true, message: `Tag \`${name}\` updated.` };
     }
@@ -233,6 +255,7 @@ export default defineCommand({
 
       delete tags[name];
       await kv.set(kvKey(guildId), tags);
+      invalidateTagCache(guildId);
 
       return { success: true, message: `Tag \`${name}\` deleted.` };
     }

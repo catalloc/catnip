@@ -29,6 +29,8 @@ import { termsPage, privacyPage } from "../discord/pages.ts";
 import { handleLinkedRolesRedirect, handleLinkedRolesCallback } from "../discord/linked-roles/routes.ts";
 import { registerMetadataSchema } from "../discord/linked-roles/register-metadata.ts";
 import { handlePatreonWebhook } from "../discord/linked-roles/patreon-webhook.ts";
+import { timingSafeEqual } from "../discord/helpers/crypto.ts";
+import { finalizeAllLoggers } from "../discord/webhook/logger.ts";
 import "../discord/linked-roles/verifiers/always-verified.ts"; // side-effect: registers verifier
 
 function checkPassword(req: Request): Response | null {
@@ -40,63 +42,71 @@ function checkPassword(req: Request): Response | null {
   const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
   const url = new URL(req.url);
   const queryToken = url.searchParams.get("password");
-  if (token !== CONFIG.adminPassword && queryToken !== CONFIG.adminPassword) {
+  const password = CONFIG.adminPassword;
+  const tokenMatch = token !== null && timingSafeEqual(token, password);
+  const queryMatch = queryToken !== null && timingSafeEqual(queryToken, password);
+  if (!tokenMatch && !queryMatch) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   return null;
 }
 
 export default async function(req: Request): Promise<Response> {
-  if (req.method === "GET") {
-    const url = new URL(req.url);
-    const path = url.pathname.replace(/\/+$/, ""); // strip trailing slashes
+  try {
+    if (req.method === "GET") {
+      const url = new URL(req.url);
+      const path = url.pathname.replace(/\/+$/, ""); // strip trailing slashes
 
-    if (path === "/terms") return termsPage();
-    if (path === "/privacy") return privacyPage();
-    if (path === "/linked-roles") return handleLinkedRolesRedirect(req);
-    if (path === "/linked-roles/callback") return handleLinkedRolesCallback(req);
+      if (path === "/terms") return termsPage();
+      if (path === "/privacy") return privacyPage();
+      if (path === "/linked-roles") return handleLinkedRolesRedirect(req);
+      if (path === "/linked-roles/callback") return handleLinkedRolesCallback(req);
 
-    if (url.searchParams.get("register") === "true") {
-      const authError = checkPassword(req);
-      if (authError) return authError;
-      const results = await registerAllCommandsFromRegistry();
-      const ok = results.filter((r) => r.success);
-      const fail = results.filter((r) => !r.success);
-      return Response.json({ registered: ok.length, failed: fail.length, results });
-    }
+      if (url.searchParams.get("register") === "true") {
+        const authError = checkPassword(req);
+        if (authError) return authError;
+        const results = await registerAllCommandsFromRegistry();
+        const ok = results.filter((r) => r.success);
+        const fail = results.filter((r) => !r.success);
+        return Response.json({ registered: ok.length, failed: fail.length, results });
+      }
 
-    if (url.searchParams.get("register-metadata") === "true") {
-      const authError = checkPassword(req);
-      if (authError) return authError;
-      const result = await registerMetadataSchema();
-      return Response.json(result, { status: result.ok ? 200 : 500 });
-    }
+      if (url.searchParams.get("register-metadata") === "true") {
+        const authError = checkPassword(req);
+        if (authError) return authError;
+        const result = await registerMetadataSchema();
+        return Response.json(result, { status: result.ok ? 200 : 500 });
+      }
 
-    if (url.searchParams.get("discover") === "true") {
-      const authError = checkPassword(req);
-      if (authError) return authError;
-      const manifest = await discover(import.meta.url);
+      if (url.searchParams.get("discover") === "true") {
+        const authError = checkPassword(req);
+        if (authError) return authError;
+        const manifest = await discover(import.meta.url);
+        return Response.json({
+          commands: manifest.commands.length,
+          components: manifest.components.length,
+          manifest,
+        });
+      }
+
       return Response.json({
-        commands: manifest.commands.length,
-        components: manifest.components.length,
-        manifest,
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        commands: getAllCommands().length,
+        interactions: getInteractionCount(),
       });
     }
 
-    return Response.json({
-      status: "ok",
-      timestamp: new Date().toISOString(),
-      commands: getAllCommands().length,
-      interactions: getInteractionCount(),
-    });
+    const url = new URL(req.url);
+    const path = url.pathname.replace(/\/+$/, "");
+
+    if (path === "/patreon/webhook") {
+      return handlePatreonWebhook(req);
+    }
+
+    return handleInteraction(req);
+  } finally {
+    // Flush any buffered logs before the isolate terminates
+    await finalizeAllLoggers();
   }
-
-  const url = new URL(req.url);
-  const path = url.pathname.replace(/\/+$/, "");
-
-  if (path === "/patreon/webhook") {
-    return handlePatreonWebhook(req);
-  }
-
-  return handleInteraction(req);
 }
