@@ -78,7 +78,7 @@ export const kv = {
     return result.rowsAffected > 0;
   },
 
-  async list(prefix?: string): Promise<Array<{ key: string; value: unknown }>> {
+  async list(prefix?: string, limit?: number): Promise<Array<{ key: string; value: unknown }>> {
     await ensureTable();
     const result = prefix
       ? await sqlite.execute({
@@ -88,6 +88,7 @@ export const kv = {
       : await sqlite.execute(`SELECT key, value FROM ${TABLE}`);
     const entries: Array<{ key: string; value: unknown }> = [];
     for (const row of result.rows) {
+      if (limit !== undefined && entries.length >= limit) break;
       const parsed = safeParse(row[1] as string);
       if (parsed !== null) {
         entries.push({ key: row[0] as string, value: parsed });
@@ -101,7 +102,7 @@ export const kv = {
    * Uses the indexed due_at column — much faster than list() + JS filter.
    * Optionally filtered by key prefix.
    */
-  async listDue(now: number, prefix?: string): Promise<Array<{ key: string; value: unknown }>> {
+  async listDue(now: number, prefix?: string, limit?: number): Promise<Array<{ key: string; value: unknown }>> {
     await ensureTable();
     const result = prefix
       ? await sqlite.execute({
@@ -114,6 +115,7 @@ export const kv = {
         });
     const entries: Array<{ key: string; value: unknown }> = [];
     for (const row of result.rows) {
+      if (limit !== undefined && entries.length >= limit) break;
       const parsed = safeParse(row[1] as string);
       if (parsed !== null) {
         entries.push({ key: row[0] as string, value: parsed });

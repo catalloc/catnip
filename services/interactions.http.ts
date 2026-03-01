@@ -20,8 +20,7 @@
  *   (default)                — Discord interaction handler (signature-verified)
  */
 
-import { handleInteraction, getInteractionCount } from "../discord/interactions/handler.ts";
-import { getAllCommands } from "../discord/interactions/registry.ts";
+import { handleInteraction } from "../discord/interactions/handler.ts";
 import { registerAllCommandsFromRegistry } from "../discord/interactions/registration.ts";
 import { discover } from "../discord/interactions/auto-discover.ts";
 import { CONFIG } from "../discord/constants.ts";
@@ -83,12 +82,7 @@ export default async function(req: Request): Promise<Response> {
         });
       }
 
-      return Response.json({
-        status: "ok",
-        timestamp: new Date().toISOString(),
-        commands: getAllCommands().length,
-        interactions: getInteractionCount(),
-      });
+      return Response.json({ status: "ok" });
     }
 
     const url = new URL(req.url);

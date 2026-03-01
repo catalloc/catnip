@@ -335,20 +335,38 @@ async function sendFollowup(
   result?: { embed?: any; components?: any[] },
   ephemeral = true,
 ): Promise<void> {
-  const response = await fetch(
-    `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildPayload(content, result, ephemeral)),
-      signal: AbortSignal.timeout(30_000),
-    },
-  );
+  const url = `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}`;
+  const body = JSON.stringify(buildPayload(content, result, ephemeral));
 
-  if (!response.ok) {
-    logger.error(
-      `Failed to send followup: ${response.status} ${response.statusText}`,
-    );
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (response.ok) return;
+
+      const errorBody = await response.text().catch(() => "");
+      if (response.status >= 500 && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      logger.error(
+        `Failed to send followup: ${response.status} ${errorBody}`,
+      );
+      return;
+    } catch (error) {
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      logger.error(
+        `Failed to send followup (network): ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }
 

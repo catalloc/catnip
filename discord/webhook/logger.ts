@@ -132,6 +132,9 @@ export class DiscordLogger {
         username: `${this.config.context} Logger`,
       });
     } catch (_e) {
+      // Restore entries so they aren't lost; cap to prevent unbounded growth
+      const MAX_BUFFER = 100;
+      this.buffer = [...entries, ...this.buffer].slice(0, MAX_BUFFER);
       if (this.config.fallbackToConsole) {
         console.error(`[${this.config.context}] Failed to flush ${entries.length} log(s) to Discord — dumping to console:`);
         console.error(this.formatBatch(entries));
@@ -188,4 +191,5 @@ export function createLogger(
  */
 export async function finalizeAllLoggers(): Promise<void> {
   await Promise.allSettled(_instances.map((l) => l.finalize()));
+  _instances.length = 0;
 }

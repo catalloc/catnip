@@ -11,6 +11,7 @@ import type { Reminder } from "../discord/interactions/commands/remind.ts";
 
 const CONCURRENCY = 5;
 const MAX_RETRIES = 5;
+const MAX_DUE_PER_RUN = 100;
 
 /** Status codes that indicate the target is permanently unreachable. */
 const PERMANENT_FAILURE_CODES = [403, 404];
@@ -57,7 +58,7 @@ async function deliverBatch(
 }
 
 export default async function () {
-  const due = await kv.listDue(Date.now(), "reminder:");
+  const due = await kv.listDue(Date.now(), "reminder:", MAX_DUE_PER_RUN);
 
   for (let i = 0; i < due.length; i += CONCURRENCY) {
     await deliverBatch(due.slice(i, i + CONCURRENCY));

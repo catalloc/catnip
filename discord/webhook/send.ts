@@ -77,6 +77,7 @@ function splitMessage(message: string): string[] {
       }
     }
 
+    if (endPos <= startPos) endPos = startPos + MAX_SIZE; // guard: always advance
     chunks.push(message.slice(startPos, endPos));
     startPos = endPos;
   }
@@ -286,7 +287,8 @@ async function sendChunked(
     let sendResult = await sendWithFallback(webhookUrl, payloads[i]);
 
     if (!sendResult.success && sendResult.status === 429 && sendResult.retryAfterMs) {
-      await new Promise((r) => setTimeout(r, sendResult.retryAfterMs));
+      const waitMs = Math.min(sendResult.retryAfterMs, 10_000);
+      await new Promise((r) => setTimeout(r, waitMs));
       sendResult = await sendWithFallback(webhookUrl, payloads[i]);
     }
 
