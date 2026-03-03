@@ -185,10 +185,8 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
     }
   }
 
-  // KV-backed cooldown check
-  const DEFAULT_COOLDOWN = 3;
-  const cooldownSeconds = command.cooldown ?? DEFAULT_COOLDOWN;
-  if (cooldownSeconds > 0) {
+  // KV-backed cooldown — only runs when a command explicitly opts in
+  if (command.cooldown && command.cooldown > 0) {
     const cooldownKey = `cooldown:${commandName}:${userId}`;
     const expiry = await kv.get<number>(cooldownKey);
     if (expiry !== null && Date.now() < expiry) {
@@ -197,7 +195,9 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
         `Please wait ${remaining} second${remaining !== 1 ? "s" : ""} before using this command again.`,
       );
     }
-    const cooldownExpiry = Date.now() + cooldownSeconds * 1000;
+    // Clean up expired entry before writing the new one
+    if (expiry !== null) await kv.delete(cooldownKey);
+    const cooldownExpiry = Date.now() + command.cooldown * 1000;
     await kv.set(cooldownKey, cooldownExpiry, cooldownExpiry);
   }
 
