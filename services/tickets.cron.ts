@@ -9,24 +9,13 @@ import { kv } from "../discord/persistence/kv.ts";
 import { type TicketData, KV_PREFIX } from "../discord/interactions/commands/ticket.ts";
 import { discordBotFetch } from "../discord/discord-api.ts";
 import { createLogger, finalizeAllLoggers } from "../discord/webhook/logger.ts";
+import { withTimeout } from "../discord/helpers/timeout.ts";
 
 const logger = createLogger("TicketCron");
 
 const MAX_DUE_PER_RUN = 50;
 const ITEM_TIMEOUT_MS = 30_000;
 const RETRY_DELAY_MS = 60 * 60 * 1000; // 1 hour
-
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer = 0;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("Timed out")), ms);
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 export default async function () {
   try {

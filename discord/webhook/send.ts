@@ -28,6 +28,7 @@ interface WebhookOptions {
 
 interface SendResult {
   success: boolean;
+  partialFailure?: boolean;
   totalChunks?: number;
   sentDirectly?: number;
   usedFallback?: boolean;
@@ -307,6 +308,7 @@ async function sendChunked(
   }
 
   results.success = results.sentDirectly! > 0;
+  results.partialFailure = results.success && results.sentDirectly! < payloads.length;
   return results;
 }
 

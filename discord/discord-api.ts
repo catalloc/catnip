@@ -75,7 +75,7 @@ export async function discordBotFetch(
         const waitMs = retryAfter ? Math.ceil(parseFloat(retryAfter) * 1000) : 1000;
         const jitter = Math.random() * Math.min(waitMs * 0.2, 2000);
         const totalWait = waitMs + jitter;
-        if (totalWait > 60_000 || totalWait + 30_000 > remainingMs()) {
+        if (totalWait + 30_000 > remainingMs()) {
           const errorText = await response.text();
           return { ok: false, status: 429, error: `Rate limited for ${waitMs}ms (${Math.round(remainingMs() / 1000)}s left): ${errorText}` };
         }

@@ -199,14 +199,14 @@ export function createLogger(
 /**
  * Flush all logger instances. Call at the end of request handling
  * to ensure buffered logs are sent before the isolate terminates.
- * Capped at 5 seconds to prevent blocking isolate shutdown.
+ * Capped at 8 seconds to prevent blocking isolate shutdown.
  */
 export async function finalizeAllLoggers(): Promise<void> {
   let timer: ReturnType<typeof setTimeout>;
   await Promise.race([
     Promise.allSettled(_instances.map((l) => l.finalize())).finally(() => clearTimeout(timer)),
     new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, 5_000);
+      timer = setTimeout(resolve, 8_000);
     }),
   ]);
 }

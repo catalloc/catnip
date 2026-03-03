@@ -1,5 +1,5 @@
 import "../../test/_mocks/env.ts";
-import { assertEquals } from "@std/assert";
+import { assertEquals, assert } from "@std/assert";
 import { sqlite } from "https://esm.town/v/std/sqlite/main.ts";
 import { kv, _internals } from "./kv.ts";
 
@@ -17,6 +17,32 @@ Deno.test("safeParse: valid JSON object", () => {
 
 Deno.test("safeParse: invalid JSON returns null", () => {
   assertEquals(safeParse("not json"), null);
+});
+
+Deno.test("safeParse: warning includes key when provided", () => {
+  const warnings: string[] = [];
+  const origWarn = console.warn;
+  console.warn = (msg: string) => warnings.push(msg);
+  try {
+    safeParse("bad json", "myPrefix:123");
+    assert(warnings.length > 0, "Should have logged a warning");
+    assert(warnings[0].includes('myPrefix:123'), "Warning should include the key");
+  } finally {
+    console.warn = origWarn;
+  }
+});
+
+Deno.test("safeParse: warning omits key when not provided", () => {
+  const warnings: string[] = [];
+  const origWarn = console.warn;
+  console.warn = (msg: string) => warnings.push(msg);
+  try {
+    safeParse("bad json");
+    assert(warnings.length > 0, "Should have logged a warning");
+    assert(!warnings[0].includes('for key'), "Warning should not include key phrase");
+  } finally {
+    console.warn = origWarn;
+  }
 });
 
 Deno.test("safeParse: valid JSON array", () => {

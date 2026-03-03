@@ -41,11 +41,11 @@ function escapeLikePrefix(prefix: string): string {
   return prefix.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
-function safeParse<T>(raw: string): T | null {
+function safeParse<T>(raw: string, key?: string): T | null {
   try {
     return JSON.parse(raw) as T;
   } catch {
-    console.warn(`[KV] Failed to parse value: ${raw.slice(0, 100)}`);
+    console.warn(`[KV] Failed to parse value${key ? ` for key "${key}"` : ""}: ${raw.slice(0, 100)}`);
     return null;
   }
 }
@@ -58,7 +58,7 @@ export const kv = {
       args: [key],
     });
     if (result.rows.length === 0) return null;
-    return safeParse<T>(result.rows[0][0] as string);
+    return safeParse<T>(result.rows[0][0] as string, key);
   },
 
   async set(key: string, value: unknown, dueAt?: number): Promise<void> {
@@ -102,9 +102,10 @@ export const kv = {
     const entries: Array<{ key: string; value: unknown }> = [];
     for (const row of result.rows) {
       if (limit !== undefined && entries.length >= limit) break;
-      const parsed = safeParse(row[1] as string);
+      const rowKey = row[0] as string;
+      const parsed = safeParse(row[1] as string, rowKey);
       if (parsed !== null) {
-        entries.push({ key: row[0] as string, value: parsed });
+        entries.push({ key: rowKey, value: parsed });
       }
     }
     return entries;
@@ -129,9 +130,10 @@ export const kv = {
     const entries: Array<{ key: string; value: unknown }> = [];
     for (const row of result.rows) {
       if (limit !== undefined && entries.length >= limit) break;
-      const parsed = safeParse(row[1] as string);
+      const rowKey = row[0] as string;
+      const parsed = safeParse(row[1] as string, rowKey);
       if (parsed !== null) {
-        entries.push({ key: row[0] as string, value: parsed });
+        entries.push({ key: rowKey, value: parsed });
       }
     }
     return entries;
@@ -150,7 +152,7 @@ export const kv = {
         args: [key],
       });
       const oldRaw = result.rows.length > 0 ? (result.rows[0][0] as string) : null;
-      const current = oldRaw !== null ? safeParse<T>(oldRaw) : null;
+      const current = oldRaw !== null ? safeParse<T>(oldRaw, key) : null;
       const next = fn(current);
       const nextRaw = JSON.stringify(next);
 
@@ -188,7 +190,7 @@ export const kv = {
       if (result.rows.length === 0) return null; // key doesn't exist
 
       const oldRaw = result.rows[0][0] as string;
-      const current = safeParse<T>(oldRaw);
+      const current = safeParse<T>(oldRaw, key);
       if (current === null) return null; // unparseable
 
       const next = fn(current);

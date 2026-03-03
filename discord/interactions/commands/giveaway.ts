@@ -260,11 +260,16 @@ export default defineCommand({
       }
 
       // Atomic CAS update for reroll
-      const updated = await kv.update<GiveawayConfig>(giveawayKey(guildId), (current) => {
-        if (!current || !current.ended) return current!;
-        const newWinners = pickWinners(current.entrants, current.winnersCount);
-        return { ...current, winners: newWinners };
-      });
+      let updated: GiveawayConfig;
+      try {
+        updated = await kv.update<GiveawayConfig>(giveawayKey(guildId), (current) => {
+          if (!current || !current.ended) return current!;
+          const newWinners = pickWinners(current.entrants, current.winnersCount);
+          return { ...current, winners: newWinners };
+        });
+      } catch {
+        return { success: false, error: "Reroll failed due to a conflict. Please try again." };
+      }
 
       // Update panel
       const patchRes = await discordBotFetch("PATCH", `channels/${updated.channelId}/messages/${updated.messageId}`, {

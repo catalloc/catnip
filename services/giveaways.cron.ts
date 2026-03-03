@@ -8,23 +8,12 @@
 import { kv } from "../discord/persistence/kv.ts";
 import { type GiveawayConfig, endGiveaway } from "../discord/interactions/commands/giveaway.ts";
 import { createLogger, finalizeAllLoggers } from "../discord/webhook/logger.ts";
+import { withTimeout } from "../discord/helpers/timeout.ts";
 
 const logger = createLogger("GiveawayCron");
 
 const MAX_DUE_PER_RUN = 100;
 const ITEM_TIMEOUT_MS = 30_000;
-
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer = 0;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("Timed out")), ms);
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 export default async function () {
   try {
@@ -57,7 +46,12 @@ export default async function () {
         ended++;
       } catch (err) {
         failed++;
-        logger.error(`Failed to end giveaway ${entry.key}:`, err);
+        const isTimeout = err instanceof Error && err.message === "Timed out";
+        if (isTimeout) {
+          logger.warn(`Timed out ending giveaway ${entry.key} — will retry next run`);
+        } else {
+          logger.error(`Failed to end giveaway ${entry.key}:`, err);
+        }
       }
     }));
 

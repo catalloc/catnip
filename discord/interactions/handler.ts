@@ -165,6 +165,7 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
 
   const guildId = body.guild_id;
   const userId = body.member?.user?.id || body.user?.id;
+  const ref = body.id?.slice(0, 8) ?? crypto.randomUUID().slice(0, 8);
 
   // Guild-only guard — guild-scoped commands cannot be used in DMs
   if (command.registration.type === "guild" && !body.guild_id) {
@@ -217,7 +218,7 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
     options.subcommand = subcommand;
   }
 
-  const logCtx = `[cmd:${commandName} guild:${guildId} user:${userId}]`;
+  const logCtx = `[${ref}] [cmd:${commandName} guild:${guildId} user:${userId}]`;
 
   logger.info(
     `${logCtx} Processing${subcommand ? `:${subcommand}` : ""} inline`,
@@ -262,17 +263,15 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
         data: buildPayload(message, result, command.ephemeral !== false),
       });
     } catch (error) {
-      const ref = body.id?.slice(0, 8);
       logger.error(`${logCtx} Error executing fast command:`, error);
       const msg = error instanceof UserFacingError
         ? error.userMessage
-        : `Something went wrong with /${commandName}${ref ? ` (ref: ${ref})` : ""}`;
+        : `Something went wrong with /${commandName} (ref: ${ref})`;
       return ephemeralResponse(`Error: ${msg}`);
     }
   }
 
   // Deferred path — return ACK directly, execute + followup in background
-  const ref = body.id?.slice(0, 8);
 
   (async () => {
     const ac = new AbortController();
@@ -458,10 +457,10 @@ async function handleInteractiveComponent(body: any, isModal: boolean): Promise<
 
     return Response.json({ type: responseType, data: buildPayload(message, result) });
   } catch (error) {
-    logger.error(`${isModal ? "Modal" : "Component"} error [${customId}]:`, error);
+    logger.error(`[${ref}] ${isModal ? "Modal" : "Component"} error [${customId}]:`, error);
     const userMsg = error instanceof UserFacingError
       ? error.userMessage
-      : `Something went wrong${ref ? ` (ref: ${ref})` : ""}`;
+      : `Something went wrong (ref: ${ref})`;
     return ephemeralResponse(`Error: ${userMsg}`);
   }
 }
@@ -495,7 +494,12 @@ export async function handleInteraction(req: Request): Promise<Response> {
       return new Response("Invalid signature", { status: 401 });
     }
 
-    const body = JSON.parse(bodyText);
+    let body: any;
+    try {
+      body = JSON.parse(bodyText);
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
+    }
 
     // Guild allowlist check — skip for PING (required by Discord); block DMs and unlisted guilds
     if (

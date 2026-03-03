@@ -1,6 +1,6 @@
 import "../../test/_mocks/env.ts";
 import { assert, assertEquals } from "@std/assert";
-import { _internals } from "./send.ts";
+import { _internals, send } from "./send.ts";
 
 const { truncateText, splitMessage, calculateEmbedSize, sanitizeEmbed, chunkEmbeds, DISCORD_LIMITS } = _internals;
 
@@ -151,5 +151,75 @@ Deno.test("chunkEmbeds: splits when total characters exceed 6000", () => {
   for (const chunk of result) {
     const totalSize = chunk.reduce((sum, e) => sum + calculateEmbedSize(e), 0);
     assert(totalSize <= DISCORD_LIMITS.totalCharacters);
+  }
+});
+
+// --- send() integration / partialFailure ---
+
+Deno.test("send: single chunk success has no partialFailure", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(new Response(JSON.stringify({ id: "1" }), { status: 200 }));
+  try {
+    const result = await send("short message", "https://discord.com/api/webhooks/test/token");
+    assertEquals(result.success, true);
+    assertEquals(result.partialFailure, false);
+    assertEquals(result.sentDirectly, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("send: all chunks succeed — no partialFailure", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(new Response(JSON.stringify({ id: "1" }), { status: 200 }));
+  try {
+    // Message long enough to split into multiple chunks
+    const longMsg = "x".repeat(4500);
+    const result = await send(longMsg, "https://discord.com/api/webhooks/test/token");
+    assertEquals(result.success, true);
+    assertEquals(result.partialFailure, false);
+    assert(result.totalChunks! >= 2, "Should have multiple chunks");
+    assertEquals(result.sentDirectly, result.totalChunks);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("send: first chunk succeeds, second fails — partialFailure is true", async () => {
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = () => {
+    callCount++;
+    // First two calls succeed (initial send + rate limit retry = 2 per chunk, but we have 1 success)
+    // Actually sendWithFallback calls sendToDiscordApi which has its own retry loop
+    // First chunk succeeds, second chunk fails
+    if (callCount <= 1) {
+      return Promise.resolve(new Response(JSON.stringify({ id: "1" }), { status: 200 }));
+    }
+    return Promise.resolve(new Response("Bad Request", { status: 400 }));
+  };
+  try {
+    const longMsg = "x".repeat(4500); // splits into 3 chunks
+    const result = await send(longMsg, "https://discord.com/api/webhooks/test/token");
+    assertEquals(result.success, true);
+    assertEquals(result.partialFailure, true);
+    assertEquals(result.sentDirectly, 1);
+    assert(result.totalChunks! >= 2);
+    assert(result.error !== undefined, "Should have error describing failed chunk");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("send: all chunks fail — partialFailure is false", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(new Response("Bad Request", { status: 400 }));
+  try {
+    const result = await send("short message", "https://discord.com/api/webhooks/test/token");
+    assertEquals(result.success, false);
+    // partialFailure should be false (or undefined) when nothing succeeded
+    assert(!result.partialFailure, "Should not be partial failure when nothing sent");
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
