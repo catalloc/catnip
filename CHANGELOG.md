@@ -1,16 +1,5 @@
 # Changelog
 
-## 1.1.0 — Secret Roll Announce & Reveal
-
-### Features
-- **Announce option** for `/r` — when rolling secretly, optionally post a public notice ("🎲 @user rolled some dice...") so the table knows something happened
-- **Reveal Roll button** — secret rolls now include a button the roller can click to post the result publicly; button disappears after use
-- New `roll-reveal` component handler with owner verification
-
-### Testing
-- Added **18 new tests** across 2 files (`r_test.ts`, `roll-reveal_test.ts`)
-- Test suite now at **408 tests** across **46 files** with 100% pass rate
-
 ## 1.0.0 — Initial Public Release
 
 ### Features
@@ -35,7 +24,7 @@
 - Health check endpoint
 
 ### Testing
-- **390 tests** across **44 files** with 100% pass rate
+- **408 tests** across **46 files** with 100% pass rate
 - Full coverage across commands, components, persistence, crons, linked roles, and webhooks
 - Offline test infrastructure with mocks for SQLite, fetch, env, signing, and Val Town utilities
 
