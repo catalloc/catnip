@@ -2,10 +2,14 @@
  * Tags - Custom text snippets stored in KV
  *
  * Subcommands:
- *   /tag view <name>           — Display tag content (anyone)
+ *   /tag view <name>           — Display tag content (role/user-gated)
  *   /tag add <name> <content>  — Create a new tag (admin-only)
  *   /tag edit <name> <content> — Update existing tag (admin-only)
  *   /tag remove <name>         — Delete a tag (admin-only)
+ *   /tag allow-role <name> <role>  — Grant role view permission (admin)
+ *   /tag deny-role <name> <role>   — Revoke role view permission (admin)
+ *   /tag allow-user <name> <user>  — Grant user view permission (admin)
+ *   /tag deny-user <name> <user>   — Revoke user view permission (admin)
  *   /tag list                  — Show all tag names
  *
  * File: discord/interactions/commands/tag.ts
@@ -16,8 +20,10 @@ import { EmbedColors, isGuildAdmin } from "../../constants.ts";
 import { kv } from "../../persistence/kv.ts";
 import { createAutocompleteResponse } from "../patterns.ts";
 
-interface TagEntry {
+export interface TagEntry {
   content: string;
+  allowedRoles?: string[];
+  allowedUsers?: string[];
   createdBy: string;
   createdAt: string;
 }
@@ -67,7 +73,25 @@ function invalidateTagCache(guildId: string): void {
   tagCache.delete(kvKey(guildId));
 }
 
-export const _internals = { sanitizeTagName, kvKey };
+/** Check if user has permission to view a tag. Unrestricted when both lists are empty/missing. */
+async function canView(
+  entry: TagEntry,
+  guildId: string,
+  userId: string,
+  memberRoles: string[],
+  memberPermissions?: string,
+): Promise<boolean> {
+  if (await isGuildAdmin(guildId, userId, memberRoles, memberPermissions)) return true;
+  if (entry.allowedUsers?.includes(userId)) return true;
+  if (entry.allowedRoles?.length) {
+    return memberRoles.some((r) => entry.allowedRoles!.includes(r));
+  }
+  // No restrictions — open by default
+  if (!entry.allowedUsers?.length && !entry.allowedRoles?.length) return true;
+  return false;
+}
+
+export const _internals = { sanitizeTagName, kvKey, canView };
 
 export default defineCommand({
   name: "tag",
@@ -151,6 +175,90 @@ export default defineCommand({
       ],
     },
     {
+      name: "allow-role",
+      description: "Grant a role permission to view this tag (admin)",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        {
+          name: "name",
+          description: "Tag name",
+          type: OptionTypes.STRING,
+          required: true,
+          autocomplete: true,
+        },
+        {
+          name: "role",
+          description: "Role to allow",
+          type: OptionTypes.ROLE,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "deny-role",
+      description: "Revoke a role's view permission (admin)",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        {
+          name: "name",
+          description: "Tag name",
+          type: OptionTypes.STRING,
+          required: true,
+          autocomplete: true,
+        },
+        {
+          name: "role",
+          description: "Role to deny",
+          type: OptionTypes.ROLE,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "allow-user",
+      description: "Grant a user permission to view this tag (admin)",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        {
+          name: "name",
+          description: "Tag name",
+          type: OptionTypes.STRING,
+          required: true,
+          autocomplete: true,
+        },
+        {
+          name: "user",
+          description: "User to allow",
+          type: OptionTypes.USER,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "deny-user",
+      description: "Revoke a user's view permission (admin)",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        {
+          name: "name",
+          description: "Tag name",
+          type: OptionTypes.STRING,
+          required: true,
+          autocomplete: true,
+        },
+        {
+          name: "user",
+          description: "User to deny",
+          type: OptionTypes.USER,
+          required: true,
+        },
+      ],
+    },
+    {
       name: "list",
       description: "Show all available tags",
       type: OptionTypes.SUB_COMMAND,
@@ -191,6 +299,10 @@ export default defineCommand({
 
       if (!tag) {
         return { success: false, error: `Tag \`${name}\` not found.` };
+      }
+
+      if (!(await canView(tag, guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You don't have permission to view this tag." };
       }
 
       return { success: true, message: tag.content };
@@ -275,6 +387,122 @@ export default defineCommand({
       return { success: true, message: `Tag \`${name}\` deleted.` };
     }
 
+    if (sub === "allow-role") {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You need admin permissions to manage tag roles." };
+      }
+
+      const name = sanitizeTagName(options.name as string);
+      const roleId = options.role as string;
+
+      let error: string | null = null;
+      await kv.update<TagStore>(kvKey(guildId), (current) => {
+        const tags = current ?? {};
+        if (!tags[name]) {
+          error = `Tag \`${name}\` not found.`;
+          return tags;
+        }
+        tags[name].allowedRoles = tags[name].allowedRoles ?? [];
+        if (tags[name].allowedRoles!.includes(roleId)) {
+          error = `Role <@&${roleId}> already has view permission for \`${name}\`.`;
+          return tags;
+        }
+        tags[name].allowedRoles!.push(roleId);
+        return tags;
+      });
+      invalidateTagCache(guildId);
+
+      if (error) return { success: false, error };
+      return { success: true, message: `Role <@&${roleId}> can now view tag \`${name}\`.` };
+    }
+
+    if (sub === "deny-role") {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You need admin permissions to manage tag roles." };
+      }
+
+      const name = sanitizeTagName(options.name as string);
+      const roleId = options.role as string;
+
+      let error: string | null = null;
+      await kv.update<TagStore>(kvKey(guildId), (current) => {
+        const tags = current ?? {};
+        if (!tags[name]) {
+          error = `Tag \`${name}\` not found.`;
+          return tags;
+        }
+        tags[name].allowedRoles = tags[name].allowedRoles ?? [];
+        if (!tags[name].allowedRoles!.includes(roleId)) {
+          error = `Role <@&${roleId}> doesn't have view permission for \`${name}\`.`;
+          return tags;
+        }
+        tags[name].allowedRoles = tags[name].allowedRoles!.filter((r) => r !== roleId);
+        return tags;
+      });
+      invalidateTagCache(guildId);
+
+      if (error) return { success: false, error };
+      return { success: true, message: `Role <@&${roleId}> can no longer view tag \`${name}\`.` };
+    }
+
+    if (sub === "allow-user") {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You need admin permissions to manage tag users." };
+      }
+
+      const name = sanitizeTagName(options.name as string);
+      const targetUserId = options.user as string;
+
+      let error: string | null = null;
+      await kv.update<TagStore>(kvKey(guildId), (current) => {
+        const tags = current ?? {};
+        if (!tags[name]) {
+          error = `Tag \`${name}\` not found.`;
+          return tags;
+        }
+        tags[name].allowedUsers = tags[name].allowedUsers ?? [];
+        if (tags[name].allowedUsers!.includes(targetUserId)) {
+          error = `User <@${targetUserId}> already has view permission for \`${name}\`.`;
+          return tags;
+        }
+        tags[name].allowedUsers!.push(targetUserId);
+        return tags;
+      });
+      invalidateTagCache(guildId);
+
+      if (error) return { success: false, error };
+      return { success: true, message: `User <@${targetUserId}> can now view tag \`${name}\`.` };
+    }
+
+    if (sub === "deny-user") {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You need admin permissions to manage tag users." };
+      }
+
+      const name = sanitizeTagName(options.name as string);
+      const targetUserId = options.user as string;
+
+      let error: string | null = null;
+      await kv.update<TagStore>(kvKey(guildId), (current) => {
+        const tags = current ?? {};
+        if (!tags[name]) {
+          error = `Tag \`${name}\` not found.`;
+          return tags;
+        }
+        tags[name].allowedUsers = tags[name].allowedUsers ?? [];
+        if (!tags[name].allowedUsers!.includes(targetUserId)) {
+          error = `User <@${targetUserId}> doesn't have view permission for \`${name}\`.`;
+          return tags;
+        }
+        tags[name].allowedUsers = tags[name].allowedUsers!.filter((u) => u !== targetUserId);
+        return tags;
+      });
+      invalidateTagCache(guildId);
+
+      if (error) return { success: false, error };
+      return { success: true, message: `User <@${targetUserId}> can no longer view tag \`${name}\`.` };
+    }
+
     if (sub === "list") {
       const tags = await getTags(guildId);
       const names = Object.keys(tags);
@@ -283,18 +511,31 @@ export default defineCommand({
         return { success: true, message: "No tags found. Use `/tag add` to create one." };
       }
 
+      const lines = names.map((n) => {
+        const tag = tags[n];
+        const parts: string[] = [];
+        if (tag.allowedRoles?.length) {
+          parts.push(`roles: ${tag.allowedRoles.map((r) => `<@&${r}>`).join(", ")}`);
+        }
+        if (tag.allowedUsers?.length) {
+          parts.push(`users: ${tag.allowedUsers.map((u) => `<@${u}>`).join(", ")}`);
+        }
+        const permInfo = parts.length ? ` (${parts.join("; ")})` : "";
+        return `\`${n}\`${permInfo}`;
+      });
+
       return {
         success: true,
         message: "",
         embed: {
           title: "Available Tags",
-          description: names.map((n) => `\`${n}\``).join(", "),
+          description: lines.join(", "),
           color: EmbedColors.INFO,
           footer: { text: `${names.length}/${MAX_TAGS} tags` },
         },
       };
     }
 
-    return { success: false, error: "Please use a subcommand: view, add, edit, remove, or list." };
+    return { success: false, error: "Please use a subcommand." };
   },
 });

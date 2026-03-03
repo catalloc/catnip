@@ -13,9 +13,9 @@
 - Scheduled messages — admin-only delayed message posting
 - Ticket system — thread-based support tickets with close reasons, join requests, modal creation, and auto-expiry via cron
 - React-roles — self-assignable role panels with button toggling
-- Tags — per-guild text snippets with admin management
-- Templates — reusable embed builder with modal editing, role-based send permissions, and channel posting
-- Paste — server pastebin with short codes, public/private retrieval, and creator/admin delete
+- Tags — per-guild text snippets with role/user-gated viewing
+- Templates — reusable embed builder with modal editing, role/user-based send permissions, and channel posting
+- Paste — server pastebin with short codes, public/private retrieval, role/user-gated access, and creator/admin delete
 - Stash — personal cross-server clipboard with named snippets
 - Backup — admin-only guild data export/import for tags, templates, and counters
 - Dice roller — standard TTRPG notation (`2d20+5`) with secret rolls, announce, and reveal

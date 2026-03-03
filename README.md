@@ -65,10 +65,11 @@ persistence layers — all running on Val Town's serverless Deno isolates.
 - **Ticket system** — Thread-based support tickets with close reasons,
   join requests, and auto-expiry via cron
 - **React-roles** — Self-assignable role panels with button toggling
-- **Tags** — Per-guild text snippets with admin management
-- **Templates** — Reusable embed builder with role-based send permissions and
-  modal editing
-- **Paste** — Server pastebin with short codes and public/private retrieval
+- **Tags** — Per-guild text snippets with role/user-gated viewing
+- **Templates** — Reusable embed builder with role/user-gated send permissions
+  and modal editing
+- **Paste** — Server pastebin with short codes, public/private retrieval, and
+  role/user-gated access
 - **Stash** — Personal cross-server clipboard for text snippets
 - **Backup** — Guild data export/import for tags, templates, and counters
 - **Dice roller** — Standard TTRPG notation (`2d20+5`) with secret rolls,
@@ -468,12 +469,18 @@ throttled to 5-second intervals.
 Server pastebin using blob storage.
 
 - `create <content>` — Store text (max 6000 chars), get an 8-char hex code
-- `get <code> [public]` — Retrieve a paste (ephemeral by default, `public: true`
-  to show the channel)
-- `list` — Show all pastes with code and content preview
+- `get <code> [public]` — Retrieve a paste (role/user-gated; ephemeral by
+  default, `public: true` to show the channel)
+- `list` — Show all pastes with code, content preview, and permission info
 - `delete <code>` — Remove a paste (creator or admin)
+- `allow-role <code> <role>` — Grant a role view permission (admin)
+- `deny-role <code> <role>` — Revoke a role's view permission (admin)
+- `allow-user <code> <user>` — Grant a user view permission (admin)
+- `deny-user <code> <user>` — Revoke a user's view permission (admin)
 
-Max 50 pastes per guild. Autocomplete on paste codes.
+Max 50 pastes per guild. Autocomplete on paste codes. Pastes are unrestricted by
+default; once any role or user is added, only those roles/users (and admins) can
+view.
 
 #### `/pick <choices>`
 
@@ -570,18 +577,25 @@ Closed tickets are auto-deleted by `tickets.cron.ts` after 24 hours.
 
 #### `/tag`
 
-Per-guild text snippets. Anyone can view; admins manage.
+Per-guild text snippets with optional role/user-gated viewing.
 
-- `view <name>` — Display a tag (autocomplete on name)
+- `view <name>` — Display a tag (role/user-gated, autocomplete on name)
 - `add <name> <content>` — Create a tag (admin-only, max 50 per guild)
 - `edit <name> <content>` — Update a tag (admin-only)
 - `remove <name>` — Delete a tag (admin-only)
-- `list` — Show all tag names
+- `allow-role <name> <role>` — Grant a role view permission (admin)
+- `deny-role <name> <role>` — Revoke a role's view permission (admin)
+- `allow-user <name> <user>` — Grant a user view permission (admin)
+- `deny-user <name> <user>` — Revoke a user's view permission (admin)
+- `list` — Show all tag names with permission info
+
+Tags are unrestricted by default; once any role or user is added, only those
+roles/users (and admins) can view.
 
 #### `/template`
 
-Reusable embed builder with role-based send permissions. Lets authorized users
-post rich embeds — something normally impossible without a bot or webhook.
+Reusable embed builder with role/user-based send permissions. Lets authorized
+users post rich embeds — something normally impossible without a bot or webhook.
 
 - `create <name>` — Open a modal to build an embed (admin)
 - `edit <name>` — Open a pre-filled modal to modify an embed (admin)
@@ -589,15 +603,18 @@ post rich embeds — something normally impossible without a bot or webhook.
 - `remove-field <name> <field-name>` — Remove a field (admin)
 - `allow-role <name> <role>` — Grant a role permission to send (admin)
 - `deny-role <name> <role>` — Revoke a role's send permission (admin)
+- `allow-user <name> <user>` — Grant a user permission to send (admin)
+- `deny-user <name> <user>` — Revoke a user's send permission (admin)
 - `preview <name>` — Preview the embed privately (anyone)
-- `send <name> [channel]` — Post the embed (role-gated, see below)
-- `list` — Show all templates with role info (anyone)
+- `send <name> [channel]` — Post the embed (role/user-gated, see below)
+- `list` — Show all templates with permission info (anyone)
 - `delete <name>` — Remove a template (admin)
 
-**Role-based send access:** Each template has an `allowedRoles` list. If empty,
-only admins can send. If roles are listed, users with at least one matching role
-(or admins) can send. Non-admins always post to the current channel; admins can
-specify a different channel.
+**Role/user-based send access:** Each template has `allowedRoles` and
+`allowedUsers` lists. If both are empty, only admins can send. If roles or users
+are listed, users with at least one matching role or user ID (or admins) can
+send. Non-admins always post to the current channel; admins can specify a
+different channel.
 
 **Modal fields:** Title (required), Description (required), Color (hex, e.g.
 `#5865f2`), Footer, Image URL.

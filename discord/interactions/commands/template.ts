@@ -8,8 +8,10 @@
  *   /template remove-field <name> <field-name>       — Remove a field (admin)
  *   /template allow-role <name> <role>               — Grant role send permission (admin)
  *   /template deny-role <name> <role>                — Revoke role send permission (admin)
+ *   /template allow-user <name> <user>               — Grant user send permission (admin)
+ *   /template deny-user <name> <user>                — Revoke user send permission (admin)
  *   /template preview <name>                         — Show embed privately (anyone)
- *   /template send <name> [channel]                  — Post embed to channel (role-gated)
+ *   /template send <name> [channel]                  — Post embed to channel (role/user-gated)
  *   /template list                                   — Show all templates (anyone)
  *   /template delete <name>                          — Remove a template (admin)
  *
@@ -30,6 +32,7 @@ export interface TemplateEntry {
   imageUrl?: string;
   fields?: Array<{ name: string; value: string; inline?: boolean }>;
   allowedRoles?: string[];
+  allowedUsers?: string[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -98,6 +101,7 @@ async function canSend(
   memberPermissions?: string,
 ): Promise<boolean> {
   if (await isGuildAdmin(guildId, userId, memberRoles, memberPermissions)) return true;
+  if (entry.allowedUsers?.includes(userId)) return true;
   if (!entry.allowedRoles || entry.allowedRoles.length === 0) return false;
   return memberRoles.some((r) => entry.allowedRoles!.includes(r));
 }
@@ -234,6 +238,48 @@ export default defineCommand({
           name: "role",
           description: "Role to deny",
           type: OptionTypes.ROLE,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "allow-user",
+      description: "Grant a user permission to send this template (admin)",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        {
+          name: "name",
+          description: "Template name",
+          type: OptionTypes.STRING,
+          required: true,
+          autocomplete: true,
+        },
+        {
+          name: "user",
+          description: "User to allow",
+          type: OptionTypes.USER,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "deny-user",
+      description: "Revoke a user's send permission (admin)",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        {
+          name: "name",
+          description: "Template name",
+          type: OptionTypes.STRING,
+          required: true,
+          autocomplete: true,
+        },
+        {
+          name: "user",
+          description: "User to deny",
+          type: OptionTypes.USER,
           required: true,
         },
       ],
@@ -479,6 +525,58 @@ export default defineCommand({
       return { success: true, message: `Role <@&${roleId}> can no longer send template \`${name}\`.` };
     }
 
+    if (sub === "allow-user") {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You need admin permissions to manage template users." };
+      }
+
+      const name = sanitizeName(options.name as string);
+      const targetUserId = options.user as string;
+
+      const entry = await blob.getJSON<TemplateEntry>(blobKey(guildId, name));
+      if (!entry) {
+        return { success: false, error: `Template \`${name}\` not found.` };
+      }
+
+      entry.allowedUsers = entry.allowedUsers ?? [];
+      if (entry.allowedUsers.includes(targetUserId)) {
+        return { success: false, error: `User <@${targetUserId}> already has send permission for \`${name}\`.` };
+      }
+
+      entry.allowedUsers.push(targetUserId);
+      entry.updatedAt = new Date().toISOString();
+      await blob.setJSON(blobKey(guildId, name), entry);
+      invalidateCache(guildId);
+
+      return { success: true, message: `User <@${targetUserId}> can now send template \`${name}\`.` };
+    }
+
+    if (sub === "deny-user") {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You need admin permissions to manage template users." };
+      }
+
+      const name = sanitizeName(options.name as string);
+      const targetUserId = options.user as string;
+
+      const entry = await blob.getJSON<TemplateEntry>(blobKey(guildId, name));
+      if (!entry) {
+        return { success: false, error: `Template \`${name}\` not found.` };
+      }
+
+      entry.allowedUsers = entry.allowedUsers ?? [];
+      if (!entry.allowedUsers.includes(targetUserId)) {
+        return { success: false, error: `User <@${targetUserId}> doesn't have send permission for \`${name}\`.` };
+      }
+
+      entry.allowedUsers = entry.allowedUsers.filter((u) => u !== targetUserId);
+      entry.updatedAt = new Date().toISOString();
+      await blob.setJSON(blobKey(guildId, name), entry);
+      invalidateCache(guildId);
+
+      return { success: true, message: `User <@${targetUserId}> can no longer send template \`${name}\`.` };
+    }
+
     if (sub === "preview") {
       const name = sanitizeName(options.name as string);
       const entry = await blob.getJSON<TemplateEntry>(blobKey(guildId, name));
@@ -526,10 +624,15 @@ export default defineCommand({
       }
 
       const lines = items.map((i) => {
-        const roleInfo = i.entry.allowedRoles?.length
-          ? ` (roles: ${i.entry.allowedRoles.map((r) => `<@&${r}>`).join(", ")})`
-          : " (admin-only)";
-        return `\`${i.name}\` — ${i.entry.title}${roleInfo}`;
+        const parts: string[] = [];
+        if (i.entry.allowedRoles?.length) {
+          parts.push(`roles: ${i.entry.allowedRoles.map((r) => `<@&${r}>`).join(", ")}`);
+        }
+        if (i.entry.allowedUsers?.length) {
+          parts.push(`users: ${i.entry.allowedUsers.map((u) => `<@${u}>`).join(", ")}`);
+        }
+        const permInfo = parts.length ? ` (${parts.join("; ")})` : " (admin-only)";
+        return `\`${i.name}\` — ${i.entry.title}${permInfo}`;
       });
 
       return {

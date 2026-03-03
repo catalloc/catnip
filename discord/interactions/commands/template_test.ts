@@ -686,3 +686,160 @@ Deno.test("template autocomplete: scoped to guild", async () => {
   assertEquals(data.data.choices.length, 1);
   assertEquals(data.data.choices[0].value, "mine");
 });
+
+// ── allow-user / deny-user tests ──
+
+Deno.test("template _internals.canSend: allowed user grants access", async () => {
+  const entry = makeTemplate({ allowedUsers: ["u5"] });
+  const result = await _internals.canSend(entry, "g1", "u5", [], "0");
+  assertEquals(result, true);
+});
+
+Deno.test("template _internals.canSend: wrong user denied when only other users allowed", async () => {
+  const entry = makeTemplate({ allowedUsers: ["u5"] });
+  const result = await _internals.canSend(entry, "g1", "u6", [], "0");
+  assertEquals(result, false);
+});
+
+Deno.test("template allow-user: adds user to allowed list", async () => {
+  resetStore();
+  await blob.setJSON("template:g1:test", makeTemplate());
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "allow-user", name: "test", user: "u5" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+
+  const entry = await blob.getJSON<TemplateEntry>("template:g1:test");
+  assert(entry?.allowedUsers?.includes("u5"));
+});
+
+Deno.test("template allow-user: rejects duplicate user", async () => {
+  resetStore();
+  await blob.setJSON("template:g1:test", makeTemplate({ allowedUsers: ["u5"] }));
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "allow-user", name: "test", user: "u5" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("already"));
+});
+
+Deno.test("template allow-user: rejects non-admin", async () => {
+  resetStore();
+  await blob.setJSON("template:g1:test", makeTemplate());
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u2",
+    options: { subcommand: "allow-user", name: "test", user: "u5" },
+    memberRoles: [],
+    memberPermissions: "0",
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("admin"));
+});
+
+Deno.test("template allow-user: template not found", async () => {
+  resetStore();
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "allow-user", name: "nope", user: "u5" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+Deno.test("template deny-user: removes user from list", async () => {
+  resetStore();
+  await blob.setJSON("template:g1:test", makeTemplate({ allowedUsers: ["u5", "u6"] }));
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "deny-user", name: "test", user: "u5" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+
+  const entry = await blob.getJSON<TemplateEntry>("template:g1:test");
+  assertEquals(entry?.allowedUsers, ["u6"]);
+});
+
+Deno.test("template deny-user: user not in list", async () => {
+  resetStore();
+  await blob.setJSON("template:g1:test", makeTemplate({ allowedUsers: ["u5"] }));
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "deny-user", name: "test", user: "u999" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("doesn't have"));
+});
+
+Deno.test("template deny-user: template not found", async () => {
+  resetStore();
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "deny-user", name: "nope", user: "u5" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+Deno.test("template send: user-gated user can send", async () => {
+  resetStore();
+  mockFetch({ default: { status: 200, body: { id: "msg1" } } });
+  try {
+    await blob.setJSON("template:g1:test", makeTemplate({ allowedUsers: ["u5"] }));
+    const mod = (await import("./template.ts")).default;
+    const result = await mod.execute({
+      guildId: "g1",
+      userId: "u5",
+      options: { subcommand: "send", name: "test", channelId: "ch1" },
+      memberRoles: [],
+      memberPermissions: "0",
+    } as any);
+    assertEquals(result.success, true);
+  } finally {
+    restoreFetch();
+  }
+});
+
+Deno.test("template list: shows allowed users", async () => {
+  resetStore();
+  await blob.setJSON("template:g1:info", makeTemplate({ title: "Info", allowedUsers: ["u5"] }));
+  await blob.setJSON("template:g1:combo", makeTemplate({ title: "Combo", allowedRoles: ["role1"], allowedUsers: ["u6"] }));
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "list" },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("<@u5>"));
+  assert(result.embed?.description?.includes("<@u6>"));
+  assert(result.embed?.description?.includes("<@&role1>"));
+});

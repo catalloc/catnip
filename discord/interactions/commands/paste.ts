@@ -3,9 +3,13 @@
  *
  * Subcommands:
  *   /paste create <content>              — Store text, get a short code
- *   /paste get <code> [public]           — Retrieve and display a paste
+ *   /paste get <code> [public]           — Retrieve and display a paste (role/user-gated)
  *   /paste list                          — Show all pastes for this guild
  *   /paste delete <code>                 — Remove a paste (creator or admin)
+ *   /paste allow-role <code> <role>      — Grant role view permission (admin)
+ *   /paste deny-role <code> <role>       — Revoke role view permission (admin)
+ *   /paste allow-user <code> <user>      — Grant user view permission (admin)
+ *   /paste deny-user <code> <user>       — Revoke user view permission (admin)
  *
  * File: discord/interactions/commands/paste.ts
  */
@@ -15,8 +19,10 @@ import { EmbedColors, isGuildAdmin } from "../../constants.ts";
 import { blob } from "../../persistence/blob.ts";
 import { createAutocompleteResponse } from "../patterns.ts";
 
-interface PasteEntry {
+export interface PasteEntry {
   content: string;
+  allowedRoles?: string[];
+  allowedUsers?: string[];
   createdBy: string;
   createdAt: string;
   title?: string;
@@ -85,7 +91,25 @@ function invalidateCache(guildId: string): void {
   listCache.delete(blobPrefix(guildId));
 }
 
-export const _internals = { blobKey, blobPrefix, generateCode, sanitizeCode };
+/** Check if user has permission to get a paste. Unrestricted when both lists are empty/missing. */
+async function canGet(
+  entry: PasteEntry,
+  guildId: string,
+  userId: string,
+  memberRoles: string[],
+  memberPermissions?: string,
+): Promise<boolean> {
+  if (await isGuildAdmin(guildId, userId, memberRoles, memberPermissions)) return true;
+  if (entry.allowedUsers?.includes(userId)) return true;
+  if (entry.allowedRoles?.length) {
+    return memberRoles.some((r) => entry.allowedRoles!.includes(r));
+  }
+  // No restrictions — open by default
+  if (!entry.allowedUsers?.length && !entry.allowedRoles?.length) return true;
+  return false;
+}
+
+export const _internals = { blobKey, blobPrefix, generateCode, sanitizeCode, canGet };
 
 export default defineCommand({
   name: "paste",
@@ -147,6 +171,90 @@ export default defineCommand({
           type: OptionTypes.STRING,
           required: true,
           autocomplete: true,
+        },
+      ],
+    },
+    {
+      name: "allow-role",
+      description: "Grant a role permission to view this paste (admin)",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        {
+          name: "code",
+          description: "Paste code",
+          type: OptionTypes.STRING,
+          required: true,
+          autocomplete: true,
+        },
+        {
+          name: "role",
+          description: "Role to allow",
+          type: OptionTypes.ROLE,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "deny-role",
+      description: "Revoke a role's view permission (admin)",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        {
+          name: "code",
+          description: "Paste code",
+          type: OptionTypes.STRING,
+          required: true,
+          autocomplete: true,
+        },
+        {
+          name: "role",
+          description: "Role to deny",
+          type: OptionTypes.ROLE,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "allow-user",
+      description: "Grant a user permission to view this paste (admin)",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        {
+          name: "code",
+          description: "Paste code",
+          type: OptionTypes.STRING,
+          required: true,
+          autocomplete: true,
+        },
+        {
+          name: "user",
+          description: "User to allow",
+          type: OptionTypes.USER,
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "deny-user",
+      description: "Revoke a user's view permission (admin)",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        {
+          name: "code",
+          description: "Paste code",
+          type: OptionTypes.STRING,
+          required: true,
+          autocomplete: true,
+        },
+        {
+          name: "user",
+          description: "User to deny",
+          type: OptionTypes.USER,
+          required: true,
         },
       ],
     },
@@ -218,6 +326,10 @@ export default defineCommand({
         return { success: false, error: `Paste \`${code}\` not found.` };
       }
 
+      if (!(await canGet(entry, guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You don't have permission to view this paste." };
+      }
+
       return {
         success: true,
         message: entry.content,
@@ -235,7 +347,15 @@ export default defineCommand({
       const lines = items.map((i) => {
         const preview = i.entry.content.slice(0, 50).replace(/\n/g, " ") +
           (i.entry.content.length > 50 ? "..." : "");
-        return `\`${i.code}\` — ${preview}`;
+        const parts: string[] = [];
+        if (i.entry.allowedRoles?.length) {
+          parts.push(`roles: ${i.entry.allowedRoles.map((r) => `<@&${r}>`).join(", ")}`);
+        }
+        if (i.entry.allowedUsers?.length) {
+          parts.push(`users: ${i.entry.allowedUsers.map((u) => `<@${u}>`).join(", ")}`);
+        }
+        const permInfo = parts.length ? ` (${parts.join("; ")})` : "";
+        return `\`${i.code}\` — ${preview}${permInfo}`;
       });
 
       return {
@@ -273,6 +393,118 @@ export default defineCommand({
       return { success: true, message: `Paste \`${code}\` deleted.` };
     }
 
-    return { success: false, error: "Please use a subcommand: create, get, list, or delete." };
+    if (sub === "allow-role") {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You need admin permissions to manage paste roles." };
+      }
+
+      const code = sanitizeCode(options.code as string);
+      if (!code) {
+        return { success: false, error: "Invalid paste code." };
+      }
+
+      const entry = await blob.getJSON<PasteEntry>(blobKey(guildId, code));
+      if (!entry) {
+        return { success: false, error: `Paste \`${code}\` not found.` };
+      }
+
+      const roleId = options.role as string;
+      entry.allowedRoles = entry.allowedRoles ?? [];
+      if (entry.allowedRoles.includes(roleId)) {
+        return { success: false, error: `Role <@&${roleId}> already has view permission for \`${code}\`.` };
+      }
+
+      entry.allowedRoles.push(roleId);
+      await blob.setJSON(blobKey(guildId, code), entry);
+      invalidateCache(guildId);
+
+      return { success: true, message: `Role <@&${roleId}> can now view paste \`${code}\`.` };
+    }
+
+    if (sub === "deny-role") {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You need admin permissions to manage paste roles." };
+      }
+
+      const code = sanitizeCode(options.code as string);
+      if (!code) {
+        return { success: false, error: "Invalid paste code." };
+      }
+
+      const entry = await blob.getJSON<PasteEntry>(blobKey(guildId, code));
+      if (!entry) {
+        return { success: false, error: `Paste \`${code}\` not found.` };
+      }
+
+      const roleId = options.role as string;
+      entry.allowedRoles = entry.allowedRoles ?? [];
+      if (!entry.allowedRoles.includes(roleId)) {
+        return { success: false, error: `Role <@&${roleId}> doesn't have view permission for \`${code}\`.` };
+      }
+
+      entry.allowedRoles = entry.allowedRoles.filter((r) => r !== roleId);
+      await blob.setJSON(blobKey(guildId, code), entry);
+      invalidateCache(guildId);
+
+      return { success: true, message: `Role <@&${roleId}> can no longer view paste \`${code}\`.` };
+    }
+
+    if (sub === "allow-user") {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You need admin permissions to manage paste users." };
+      }
+
+      const code = sanitizeCode(options.code as string);
+      if (!code) {
+        return { success: false, error: "Invalid paste code." };
+      }
+
+      const entry = await blob.getJSON<PasteEntry>(blobKey(guildId, code));
+      if (!entry) {
+        return { success: false, error: `Paste \`${code}\` not found.` };
+      }
+
+      const targetUserId = options.user as string;
+      entry.allowedUsers = entry.allowedUsers ?? [];
+      if (entry.allowedUsers.includes(targetUserId)) {
+        return { success: false, error: `User <@${targetUserId}> already has view permission for \`${code}\`.` };
+      }
+
+      entry.allowedUsers.push(targetUserId);
+      await blob.setJSON(blobKey(guildId, code), entry);
+      invalidateCache(guildId);
+
+      return { success: true, message: `User <@${targetUserId}> can now view paste \`${code}\`.` };
+    }
+
+    if (sub === "deny-user") {
+      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
+        return { success: false, error: "You need admin permissions to manage paste users." };
+      }
+
+      const code = sanitizeCode(options.code as string);
+      if (!code) {
+        return { success: false, error: "Invalid paste code." };
+      }
+
+      const entry = await blob.getJSON<PasteEntry>(blobKey(guildId, code));
+      if (!entry) {
+        return { success: false, error: `Paste \`${code}\` not found.` };
+      }
+
+      const targetUserId = options.user as string;
+      entry.allowedUsers = entry.allowedUsers ?? [];
+      if (!entry.allowedUsers.includes(targetUserId)) {
+        return { success: false, error: `User <@${targetUserId}> doesn't have view permission for \`${code}\`.` };
+      }
+
+      entry.allowedUsers = entry.allowedUsers.filter((u) => u !== targetUserId);
+      await blob.setJSON(blobKey(guildId, code), entry);
+      invalidateCache(guildId);
+
+      return { success: true, message: `User <@${targetUserId}> can no longer view paste \`${code}\`.` };
+    }
+
+    return { success: false, error: "Please use a subcommand." };
   },
 });

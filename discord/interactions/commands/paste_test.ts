@@ -3,6 +3,7 @@ import { assertEquals, assert } from "@std/assert";
 import { blob } from "../../../test/_mocks/blob.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
 import { _internals } from "./paste.ts";
+import type { PasteEntry } from "./paste.ts";
 import { InteractionResponseType } from "../patterns.ts";
 
 function resetStore() {
@@ -439,4 +440,325 @@ Deno.test("paste create: per-user limit does not block other users", async () =>
   } as any);
   assertEquals(result.success, true);
   assert(result.message?.includes("Paste created"));
+});
+
+// ── canGet tests ──
+
+function makePaste(overrides?: Partial<PasteEntry>): PasteEntry {
+  return {
+    content: "test paste content",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+Deno.test("paste _internals.canGet: admin always allowed", async () => {
+  const entry = makePaste({ allowedRoles: ["role1"] });
+  const result = await _internals.canGet(entry, "g1", "u1", [], ADMIN_PERMISSIONS);
+  assertEquals(result, true);
+});
+
+Deno.test("paste _internals.canGet: allowed user grants access", async () => {
+  const entry = makePaste({ allowedUsers: ["u5"] });
+  const result = await _internals.canGet(entry, "g1", "u5", [], "0");
+  assertEquals(result, true);
+});
+
+Deno.test("paste _internals.canGet: allowed role grants access", async () => {
+  const entry = makePaste({ allowedRoles: ["role1", "role2"] });
+  const result = await _internals.canGet(entry, "g1", "u2", ["role1"], "0");
+  assertEquals(result, true);
+});
+
+Deno.test("paste _internals.canGet: denied without permission", async () => {
+  const entry = makePaste({ allowedRoles: ["role1"] });
+  const result = await _internals.canGet(entry, "g1", "u2", ["role999"], "0");
+  assertEquals(result, false);
+});
+
+Deno.test("paste _internals.canGet: unrestricted when no lists set", async () => {
+  const entry = makePaste();
+  const result = await _internals.canGet(entry, "g1", "u2", [], "0");
+  assertEquals(result, true);
+});
+
+Deno.test("paste _internals.canGet: denied when only other users allowed", async () => {
+  const entry = makePaste({ allowedUsers: ["u5"] });
+  const result = await _internals.canGet(entry, "g1", "u6", [], "0");
+  assertEquals(result, false);
+});
+
+// ── get gating tests ──
+
+Deno.test("paste get: gated paste denied for unpermitted user", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste({ allowedRoles: ["role1"] }));
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u2",
+    options: { subcommand: "get", code: "abc12345" },
+    memberRoles: [],
+    memberPermissions: "0",
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("permission"));
+});
+
+Deno.test("paste get: gated paste allowed for permitted user", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste({ allowedRoles: ["role1"] }));
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u2",
+    options: { subcommand: "get", code: "abc12345" },
+    memberRoles: ["role1"],
+    memberPermissions: "0",
+  } as any);
+  assertEquals(result.success, true);
+  assertEquals(result.message, "test paste content");
+});
+
+// ── allow-role tests ──
+
+Deno.test("paste allow-role: adds role to allowed list", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste());
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "allow-role", code: "abc12345", role: "role1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+
+  const entry = await blob.getJSON<PasteEntry>("paste:g1:abc12345");
+  assert(entry?.allowedRoles?.includes("role1"));
+});
+
+Deno.test("paste allow-role: rejects duplicate", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste({ allowedRoles: ["role1"] }));
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "allow-role", code: "abc12345", role: "role1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("already"));
+});
+
+Deno.test("paste allow-role: rejects non-admin", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste());
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u2",
+    options: { subcommand: "allow-role", code: "abc12345", role: "role1" },
+    memberRoles: [],
+    memberPermissions: "0",
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("admin"));
+});
+
+Deno.test("paste allow-role: paste not found", async () => {
+  resetStore();
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "allow-role", code: "dead0000", role: "role1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+// ── deny-role tests ──
+
+Deno.test("paste deny-role: removes role from list", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste({ allowedRoles: ["role1", "role2"] }));
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "deny-role", code: "abc12345", role: "role1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+
+  const entry = await blob.getJSON<PasteEntry>("paste:g1:abc12345");
+  assertEquals(entry?.allowedRoles, ["role2"]);
+});
+
+Deno.test("paste deny-role: role not in list", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste({ allowedRoles: ["role1"] }));
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "deny-role", code: "abc12345", role: "role999" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("doesn't have"));
+});
+
+Deno.test("paste deny-role: paste not found", async () => {
+  resetStore();
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "deny-role", code: "dead0000", role: "role1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+// ── allow-user tests ──
+
+Deno.test("paste allow-user: adds user to allowed list", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste());
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "allow-user", code: "abc12345", user: "u5" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+
+  const entry = await blob.getJSON<PasteEntry>("paste:g1:abc12345");
+  assert(entry?.allowedUsers?.includes("u5"));
+});
+
+Deno.test("paste allow-user: rejects duplicate", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste({ allowedUsers: ["u5"] }));
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "allow-user", code: "abc12345", user: "u5" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("already"));
+});
+
+Deno.test("paste allow-user: rejects non-admin", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste());
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u2",
+    options: { subcommand: "allow-user", code: "abc12345", user: "u5" },
+    memberRoles: [],
+    memberPermissions: "0",
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("admin"));
+});
+
+Deno.test("paste allow-user: paste not found", async () => {
+  resetStore();
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "allow-user", code: "dead0000", user: "u5" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+// ── deny-user tests ──
+
+Deno.test("paste deny-user: removes user from list", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste({ allowedUsers: ["u5", "u6"] }));
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "deny-user", code: "abc12345", user: "u5" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+
+  const entry = await blob.getJSON<PasteEntry>("paste:g1:abc12345");
+  assertEquals(entry?.allowedUsers, ["u6"]);
+});
+
+Deno.test("paste deny-user: user not in list", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:abc12345", makePaste({ allowedUsers: ["u5"] }));
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "deny-user", code: "abc12345", user: "u999" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("doesn't have"));
+});
+
+Deno.test("paste deny-user: paste not found", async () => {
+  resetStore();
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "deny-user", code: "dead0000", user: "u5" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+// ── list with permission info ──
+
+Deno.test("paste list: shows permission info", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:code0001", makePaste());
+  await blob.setJSON("paste:g1:code0002", makePaste({ allowedRoles: ["role1"], allowedUsers: ["u5"] }));
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "list" },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("code0001"));
+  assert(result.embed?.description?.includes("code0002"));
+  assert(result.embed?.description?.includes("<@&role1>"));
+  assert(result.embed?.description?.includes("<@u5>"));
 });
