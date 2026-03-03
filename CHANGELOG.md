@@ -11,6 +11,7 @@
 - Poll system — button voting with live counts, auto-end, vote switching
 - Reminders — personal time-delayed reminders with exactly-once cron delivery
 - Scheduled messages — admin-only delayed message posting
+- Ticket system — thread-based support tickets with close reasons, join requests, modal creation, and auto-expiry via cron
 - React-roles — self-assignable role panels with button toggling
 - Tags — per-guild text snippets with admin management
 - Dice roller — standard TTRPG notation (`2d20+5`)
@@ -21,6 +22,11 @@
 - Guild allowlist via `ALLOWED_GUILD_IDS`
 - Built-in Terms of Service and Privacy Policy pages
 - Health check endpoint
+
+### Testing
+- **390 tests** across **44 files** with 100% pass rate
+- Full coverage across commands, components, persistence, crons, linked roles, and webhooks
+- Offline test infrastructure with mocks for SQLite, fetch, env, signing, and Val Town utilities
 
 ### Security
 - Ed25519 signature verification on all interactions

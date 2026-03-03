@@ -43,6 +43,7 @@ persistence layer — all running on Val Town's serverless Deno isolates.
 - [Modal Dialogs](#modal-dialogs)
 - [Select Menus](#select-menus)
 - [Pagination with Buttons](#pagination-with-buttons)
+- [Testing](#testing)
 - [Project Structure](#project-structure)
 - [License](#license)
 
@@ -60,6 +61,8 @@ persistence layer — all running on Val Town's serverless Deno isolates.
 - **Reminders** — Personal time-delayed reminders with exactly-once cron
   delivery
 - **Scheduled messages** — Admin-only delayed message posting
+- **Ticket system** — Thread-based support tickets with close reasons,
+  join requests, and auto-expiry via cron
 - **React-roles** — Self-assignable role panels with button toggling
 - **Tags** — Per-guild text snippets with admin management
 - **Dice roller** — Standard TTRPG notation (`2d20+5`)
@@ -1040,6 +1043,41 @@ export default defineComponent({
 });
 ```
 
+## Testing
+
+Catnip has a comprehensive test suite — **44 test files** with **390 tests** and
+a **100% pass rate**. Tests run on Deno's built-in test runner with no external
+test dependencies.
+
+```bash
+deno test --allow-env --allow-net --no-check
+```
+
+### Coverage by Layer
+
+| Layer | Files | Tests | What's Covered |
+|---|---|---|---|
+| **Core infrastructure** | 6 | 61 | Config loading, API retry logic, crypto helpers, duration parsing, embed builder, timeouts |
+| **Interaction framework** | 7 | 55 | Handler dispatch, auto-discovery, command factory, component factory, error handling, patterns, registration |
+| **Commands** | 9 | 75 | facts, giveaway, poll, remind, schedule, server, tag, ticket |
+| **Components** | 7 | 45 | giveaway-enter, poll-vote, react-role, ticket-close, ticket-close-modal, ticket-join, ticket-modal |
+| **Persistence** | 2 | 43 | KV store CRUD, atomic operations, optimistic concurrency, time-based queries, guild config |
+| **Linked roles** | 5 | 34 | OAuth2 flow, verifier factory, Patreon webhook, routes, CSRF state tokens |
+| **Webhooks** | 2 | 36 | Batched logger (flush, levels, truncation), message sending (chunking, embeds, rate limits) |
+| **Cron jobs** | 5 | 23 | Giveaway auto-end, poll auto-end, reminder delivery, scheduled messages, ticket expiry |
+| **HTTP endpoint** | 1 | 12 | Signature verification, routing, health check, admin auth |
+| **HTML pages** | 1 | 6 | Legal pages rendering, security headers |
+
+### Test Infrastructure
+
+All external dependencies are mocked so tests run offline and in isolation:
+
+- **`test/_mocks/sqlite.ts`** — In-memory SQLite mock with full query support
+- **`test/_mocks/fetch.ts`** — Configurable HTTP fetch mock for Discord API calls
+- **`test/_mocks/env.ts`** — Environment variable mock for config testing
+- **`test/_mocks/sign.ts`** — Ed25519 request signing for interaction tests
+- **`test/_mocks/val-utils.ts`** — Val Town runtime utilities mock
+
 ## Project Structure
 
 ```
@@ -1050,7 +1088,8 @@ export default defineComponent({
 │   ├── helpers/
 │   │   ├── crypto.ts             # timingSafeEqual, secureRandomIndex
 │   │   ├── duration.ts           # Human-readable duration parser
-│   │   └── embed-builder.ts      # Fluent embed builder
+│   │   ├── embed-builder.ts      # Fluent embed builder
+│   │   └── timeout.ts            # withTimeout() utility
 │   ├── linked-roles/
 │   │   ├── define-verifier.ts    # defineVerifier() helper and types
 │   │   ├── oauth.ts              # Discord OAuth2 token exchange
@@ -1098,6 +1137,7 @@ export default defineComponent({
 │   │   │   ├── server.ts         # Guild configuration
 │   │   │   ├── slow-echo.ts      # Deferred command demo
 │   │   │   ├── tag.ts            # Custom text tags
+│   │   │   ├── ticket.ts         # Ticket system
 │   │   │   └── user-info.ts      # User context menu
 │   │   └── components/
 │   │       ├── color-select.ts   # Color picker handler
@@ -1106,7 +1146,11 @@ export default defineComponent({
 │   │       ├── feedback-modal.ts # Feedback modal handler
 │   │       ├── giveaway-enter.ts # Giveaway entry handler
 │   │       ├── poll-vote.ts      # Poll vote handler
-│   │       └── react-role.ts     # Role toggle handler
+│   │       ├── react-role.ts     # Role toggle handler
+│   │       ├── ticket-close.ts   # Ticket close handler
+│   │       ├── ticket-close-modal.ts # Close reason modal handler
+│   │       ├── ticket-join.ts    # Ticket join handler
+│   │       └── ticket-modal.ts   # Ticket creation modal handler
 │   └── webhook/
 │       ├── logger.ts             # Batched Discord webhook logger
 │       └── send.ts               # Webhook message sending
@@ -1116,7 +1160,8 @@ export default defineComponent({
 │   ├── giveaways.cron.ts         # Auto-end expired giveaways
 │   ├── polls.cron.ts             # Auto-end expired polls
 │   ├── reminders.cron.ts         # Deliver due reminders
-│   └── scheduled-messages.cron.ts# Deliver due scheduled messages
+│   ├── scheduled-messages.cron.ts# Deliver due scheduled messages
+│   └── tickets.cron.ts           # Expire inactive tickets
 └── test/
     └── _mocks/                   # Test infrastructure mocks
 ```

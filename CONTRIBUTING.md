@@ -14,7 +14,7 @@ Thanks for your interest in contributing! Catnip is a Discord bot template built
 deno test --allow-env --allow-net --no-check
 ```
 
-All 184 tests should pass. Tests use mock modules for SQLite and Val Town utilities (see `test/_mocks/`).
+All 390 tests across 44 files should pass. Tests use mock modules for SQLite and Val Town utilities (see `test/_mocks/`). See the [README](README.md#testing) for a full coverage breakdown.
 
 ## Adding a Command
 
