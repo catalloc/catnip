@@ -23,6 +23,7 @@ interface PasteEntry {
 }
 
 const MAX_PASTES = 50;
+const MAX_PASTES_PER_USER = 15;
 const MAX_CONTENT_LENGTH = 6000;
 const AUTOCOMPLETE_CACHE_TTL_MS = 30_000;
 const MAX_CACHE_ENTRIES = 500;
@@ -33,6 +34,12 @@ function blobKey(guildId: string, code: string): string {
 
 function blobPrefix(guildId: string): string {
   return `paste:${guildId}:`;
+}
+
+/** Validate paste code: hex only, max 16 chars. Returns null if invalid. */
+function sanitizeCode(raw: string): string | null {
+  const code = raw.trim().toLowerCase();
+  return /^[a-f0-9]{1,16}$/.test(code) ? code : null;
 }
 
 /** Generate an 8-char hex ID. */
@@ -78,7 +85,7 @@ function invalidateCache(guildId: string): void {
   listCache.delete(blobPrefix(guildId));
 }
 
-export const _internals = { blobKey, blobPrefix, generateCode };
+export const _internals = { blobKey, blobPrefix, generateCode, sanitizeCode };
 
 export default defineCommand({
   name: "paste",
@@ -176,10 +183,14 @@ export default defineCommand({
     if (sub === "create") {
       const content = options.content as string;
 
-      // Check limit
-      const existing = await blob.list(blobPrefix(guildId));
-      if (existing.length >= MAX_PASTES) {
+      // Check limits
+      const allPastes = await listPastes(guildId);
+      if (allPastes.length >= MAX_PASTES) {
         return { success: false, error: `Maximum of ${MAX_PASTES} pastes reached for this server.` };
+      }
+      const userCount = allPastes.filter((p) => p.entry.createdBy === userId).length;
+      if (userCount >= MAX_PASTES_PER_USER) {
+        return { success: false, error: `You've reached the maximum of ${MAX_PASTES_PER_USER} pastes per user.` };
       }
 
       const code = generateCode();
@@ -196,7 +207,10 @@ export default defineCommand({
     }
 
     if (sub === "get") {
-      const code = options.code as string;
+      const code = sanitizeCode(options.code as string);
+      if (!code) {
+        return { success: false, error: "Invalid paste code." };
+      }
       const isPublic = (options.public as boolean) ?? false;
       const entry = await blob.getJSON<PasteEntry>(blobKey(guildId, code));
 
@@ -237,7 +251,10 @@ export default defineCommand({
     }
 
     if (sub === "delete") {
-      const code = options.code as string;
+      const code = sanitizeCode(options.code as string);
+      if (!code) {
+        return { success: false, error: "Invalid paste code." };
+      }
       const entry = await blob.getJSON<PasteEntry>(blobKey(guildId, code));
 
       if (!entry) {

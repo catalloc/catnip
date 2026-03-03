@@ -15,6 +15,7 @@ import { EmbedColors } from "../../constants.ts";
 import { blob } from "../../persistence/blob.ts";
 import { kv } from "../../persistence/kv.ts";
 import { createAutocompleteResponse } from "../patterns.ts";
+import { isValidPublicUrl } from "../../helpers/url.ts";
 import type { TemplateEntry } from "./template.ts";
 
 interface TagEntry {
@@ -33,6 +34,51 @@ interface BackupData {
     templates?: Record<string, TemplateEntry>;
     counter?: number;
   };
+}
+
+const MAX_NAME_LENGTH = 32;
+
+/** Sanitize name: lowercase, alphanumeric + hyphens, max 32 chars. */
+function sanitizeName(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, MAX_NAME_LENGTH);
+}
+
+/** Type guard: validate that parsed JSON has the expected BackupData shape. */
+function isValidBackupData(data: unknown): data is BackupData {
+  if (!data || typeof data !== "object") return false;
+  const d = data as Record<string, unknown>;
+  if (d.version !== 1) return false;
+  if (typeof d.guildId !== "string") return false;
+  if (!d.data || typeof d.data !== "object") return false;
+
+  const inner = d.data as Record<string, unknown>;
+
+  // Validate tags
+  if (inner.tags !== undefined) {
+    if (typeof inner.tags !== "object" || inner.tags === null) return false;
+    for (const val of Object.values(inner.tags as Record<string, unknown>)) {
+      if (!val || typeof val !== "object") return false;
+      const tag = val as Record<string, unknown>;
+      if (typeof tag.content !== "string" || typeof tag.createdBy !== "string" || typeof tag.createdAt !== "string") {
+        return false;
+      }
+    }
+  }
+
+  // Validate templates
+  if (inner.templates !== undefined) {
+    if (typeof inner.templates !== "object" || inner.templates === null) return false;
+    for (const val of Object.values(inner.templates as Record<string, unknown>)) {
+      if (!val || typeof val !== "object") return false;
+      const tpl = val as Record<string, unknown>;
+      if (typeof tpl.title !== "string" || typeof tpl.description !== "string") return false;
+    }
+  }
+
+  // Validate counter
+  if (inner.counter !== undefined && typeof inner.counter !== "number") return false;
+
+  return true;
 }
 
 const MAX_BACKUPS = 5;
@@ -84,7 +130,7 @@ function invalidateCache(guildId: string): void {
   listCache.delete(blobPrefix(guildId));
 }
 
-export const _internals = { blobKey, blobPrefix };
+export const _internals = { blobKey, blobPrefix, sanitizeName, isValidBackupData };
 
 export default defineCommand({
   name: "backup",
@@ -219,11 +265,17 @@ export default defineCommand({
 
     if (sub === "import") {
       const id = options.id as string;
-      const backup = await blob.getJSON<BackupData>(blobKey(guildId, id));
+      const raw = await blob.getJSON<unknown>(blobKey(guildId, id));
 
-      if (!backup) {
+      if (!raw) {
         return { success: false, error: `Backup \`${id}\` not found.` };
       }
+
+      if (!isValidBackupData(raw)) {
+        return { success: false, error: "Backup data is corrupt or has an unsupported format." };
+      }
+
+      const backup = raw;
 
       if (backup.guildId !== guildId) {
         return { success: false, error: "This backup belongs to a different guild." };
@@ -234,10 +286,16 @@ export default defineCommand({
         await kv.set(`tags:${guildId}`, backup.data.tags);
       }
 
-      // Restore templates to blob
+      // Restore templates to blob — sanitize names and strip invalid imageUrls
       if (backup.data.templates) {
-        for (const [name, entry] of Object.entries(backup.data.templates)) {
-          await blob.setJSON(`template:${guildId}:${name}`, entry);
+        for (const [rawName, entry] of Object.entries(backup.data.templates)) {
+          const name = sanitizeName(rawName);
+          if (!name) continue; // skip entries with empty sanitized name
+          const sanitizedEntry = { ...entry };
+          if (sanitizedEntry.imageUrl && !isValidPublicUrl(sanitizedEntry.imageUrl)) {
+            sanitizedEntry.imageUrl = undefined;
+          }
+          await blob.setJSON(`template:${guildId}:${name}`, sanitizedEntry);
         }
       }
 

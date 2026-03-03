@@ -37,6 +37,24 @@ Deno.test("paste _internals.generateCode: returns 8-char hex", () => {
   assert(/^[0-9a-f]{8}$/.test(code));
 });
 
+Deno.test("paste _internals.sanitizeCode: accepts valid hex codes", () => {
+  assertEquals(_internals.sanitizeCode("abc12345"), "abc12345");
+  assertEquals(_internals.sanitizeCode("ABCDEF"), "abcdef");
+  assertEquals(_internals.sanitizeCode("0"), "0");
+});
+
+Deno.test("paste _internals.sanitizeCode: rejects non-hex", () => {
+  assertEquals(_internals.sanitizeCode("hello!"), null);
+  assertEquals(_internals.sanitizeCode("../../../etc"), null);
+  assertEquals(_internals.sanitizeCode("abc 123"), null);
+  assertEquals(_internals.sanitizeCode(""), null);
+});
+
+Deno.test("paste _internals.sanitizeCode: rejects too-long codes", () => {
+  assertEquals(_internals.sanitizeCode("a".repeat(17)), null);
+  assertEquals(_internals.sanitizeCode("a".repeat(16)), "a".repeat(16));
+});
+
 Deno.test("paste create: stores content and returns code", async () => {
   resetStore();
   const mod = (await import("./paste.ts")).default;
@@ -117,7 +135,7 @@ Deno.test("paste get: not found", async () => {
   const result = await mod.execute({
     guildId: "g1",
     userId: "u1",
-    options: { subcommand: "get", code: "nope1234" },
+    options: { subcommand: "get", code: "dead0000" },
     memberRoles: [],
   } as any);
   assertEquals(result.success, false);
@@ -227,7 +245,7 @@ Deno.test("paste delete: not found", async () => {
   const result = await mod.execute({
     guildId: "g1",
     userId: "u1",
-    options: { subcommand: "delete", code: "nope1234" },
+    options: { subcommand: "delete", code: "dead0000" },
     memberRoles: [],
     memberPermissions: ADMIN_PERMISSIONS,
   } as any);
@@ -341,4 +359,84 @@ Deno.test("paste autocomplete: scoped to guild", async () => {
   const data = await resp.json();
   assertEquals(data.data.choices.length, 1);
   assertEquals(data.data.choices[0].value, "aaa11111");
+});
+
+Deno.test("paste get: rejects invalid code (non-hex)", async () => {
+  resetStore();
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "get", code: "../../../etc/passwd" },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("Invalid paste code"));
+});
+
+Deno.test("paste get: rejects code that is too long", async () => {
+  resetStore();
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "get", code: "a".repeat(17) },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("Invalid paste code"));
+});
+
+Deno.test("paste delete: rejects invalid code (non-hex)", async () => {
+  resetStore();
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "delete", code: "hello world!" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("Invalid paste code"));
+});
+
+Deno.test("paste create: enforces per-user paste limit", async () => {
+  resetStore();
+  for (let i = 0; i < 15; i++) {
+    await blob.setJSON(`paste:g1:${i.toString(16).padStart(8, "0")}`, {
+      content: `paste ${i}`,
+      createdBy: "u1",
+      createdAt: "2024-01-01T00:00:00.000Z",
+    });
+  }
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "create", content: "one more" },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("maximum of 15"));
+});
+
+Deno.test("paste create: per-user limit does not block other users", async () => {
+  resetStore();
+  for (let i = 0; i < 15; i++) {
+    await blob.setJSON(`paste:g1:${i.toString(16).padStart(8, "0")}`, {
+      content: `paste ${i}`,
+      createdBy: "u1",
+      createdAt: "2024-01-01T00:00:00.000Z",
+    });
+  }
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u2",
+    options: { subcommand: "create", content: "I'm a different user" },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.message?.includes("Paste created"));
 });

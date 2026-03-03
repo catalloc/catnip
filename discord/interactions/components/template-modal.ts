@@ -10,6 +10,7 @@
 import { defineComponent } from "../define-component.ts";
 import { EmbedColors } from "../../constants.ts";
 import { blob } from "../../persistence/blob.ts";
+import { isValidPublicUrl } from "../../helpers/url.ts";
 import type { TemplateEntry } from "../commands/template.ts";
 
 function blobKey(guildId: string, name: string): string {
@@ -23,15 +24,11 @@ function parseColor(raw: string): number | null {
   return parseInt(cleaned, 16);
 }
 
-/** Basic URL format validation. */
-function isValidUrl(url: string): boolean {
-  return /^https?:\/\/.+/.test(url.trim());
-}
-
 export default defineComponent({
   customId: "template-modal:",
   match: "prefix",
   type: "modal",
+  adminOnly: true,
 
   async execute({ customId, userId, fields }) {
     // Parse customId: template-modal:{action}:{guildId}:{name}
@@ -65,7 +62,7 @@ export default defineComponent({
     }
 
     // Validate image URL
-    if (imageUrl && !isValidUrl(imageUrl)) {
+    if (imageUrl && !isValidPublicUrl(imageUrl)) {
       return { success: false, error: `Invalid image URL. Must start with \`http://\` or \`https://\`.` };
     }
 

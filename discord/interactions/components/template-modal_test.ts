@@ -264,6 +264,51 @@ Deno.test("template-modal create: sets createdBy to userId", async () => {
   assertEquals(entry?.createdAt, entry?.updatedAt);
 });
 
+Deno.test("template-modal: has adminOnly flag set", async () => {
+  const mod = (await import("./template-modal.ts")).default;
+  assertEquals(mod.adminOnly, true);
+});
+
+Deno.test("template-modal create: rejects private-IP image URL", async () => {
+  resetStore();
+  const mod = (await import("./template-modal.ts")).default;
+  const result = await mod.execute({
+    customId: "template-modal:create:g1:test",
+    guildId: "g1",
+    userId: "u1",
+    interaction: {},
+    fields: {
+      template_title: "Title",
+      template_description: "Desc",
+      template_color: "",
+      template_footer: "",
+      template_image_url: "http://192.168.1.1/secret.png",
+    },
+  });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("Invalid image URL"));
+});
+
+Deno.test("template-modal create: rejects localhost image URL", async () => {
+  resetStore();
+  const mod = (await import("./template-modal.ts")).default;
+  const result = await mod.execute({
+    customId: "template-modal:create:g1:test",
+    guildId: "g1",
+    userId: "u1",
+    interaction: {},
+    fields: {
+      template_title: "Title",
+      template_description: "Desc",
+      template_color: "",
+      template_footer: "",
+      template_image_url: "http://localhost:8080/admin",
+    },
+  });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("Invalid image URL"));
+});
+
 Deno.test("template-modal edit: preserves createdBy and updates updatedAt", async () => {
   resetStore();
   await blob.setJSON("template:g1:test", {

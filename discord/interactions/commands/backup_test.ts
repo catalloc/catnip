@@ -32,6 +32,105 @@ Deno.test("backup _internals.blobPrefix: correct format", () => {
   assertEquals(_internals.blobPrefix("g1"), "backup:g1:");
 });
 
+Deno.test("backup _internals.sanitizeName: cleans names", () => {
+  assertEquals(_internals.sanitizeName("Hello World!"), "helloworld");
+  assertEquals(_internals.sanitizeName("my-template"), "my-template");
+  assertEquals(_internals.sanitizeName("../../../etc"), "etc");
+  assertEquals(_internals.sanitizeName(""), "");
+});
+
+Deno.test("backup _internals.isValidBackupData: accepts valid data", () => {
+  assertEquals(_internals.isValidBackupData({
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {},
+  }), true);
+});
+
+Deno.test("backup _internals.isValidBackupData: accepts data with tags", () => {
+  assertEquals(_internals.isValidBackupData({
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {
+      tags: { hello: { content: "world", createdBy: "u1", createdAt: "2024-01-01" } },
+    },
+  }), true);
+});
+
+Deno.test("backup _internals.isValidBackupData: rejects wrong version", () => {
+  assertEquals(_internals.isValidBackupData({
+    version: 2,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {},
+  }), false);
+});
+
+Deno.test("backup _internals.isValidBackupData: rejects missing guildId", () => {
+  assertEquals(_internals.isValidBackupData({
+    version: 1,
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {},
+  }), false);
+});
+
+Deno.test("backup _internals.isValidBackupData: rejects missing data object", () => {
+  assertEquals(_internals.isValidBackupData({
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+  }), false);
+});
+
+Deno.test("backup _internals.isValidBackupData: rejects invalid tag shape", () => {
+  assertEquals(_internals.isValidBackupData({
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {
+      tags: { hello: { content: 123 } },
+    },
+  }), false);
+});
+
+Deno.test("backup _internals.isValidBackupData: rejects invalid template shape", () => {
+  assertEquals(_internals.isValidBackupData({
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {
+      templates: { test: { title: 123 } },
+    },
+  }), false);
+});
+
+Deno.test("backup _internals.isValidBackupData: rejects non-number counter", () => {
+  assertEquals(_internals.isValidBackupData({
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: { counter: "not a number" },
+  }), false);
+});
+
+Deno.test("backup _internals.isValidBackupData: rejects null", () => {
+  assertEquals(_internals.isValidBackupData(null), false);
+});
+
+Deno.test("backup _internals.isValidBackupData: rejects string", () => {
+  assertEquals(_internals.isValidBackupData("not an object"), false);
+});
+
 Deno.test("backup export: creates a backup with tags", async () => {
   resetStore();
   await kv.set("tags:g1", {
@@ -449,4 +548,178 @@ Deno.test("backup autocomplete: scoped to guild", async () => {
   const data = await resp.json();
   assertEquals(data.data.choices.length, 1);
   assertEquals(data.data.choices[0].value, "mine");
+});
+
+Deno.test("backup import: rejects invalid data shape", async () => {
+  resetStore();
+  // Store raw invalid data (wrong version)
+  await blob.setJSON("backup:g1:bad1", {
+    version: 2,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {},
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "import", id: "bad1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("corrupt"));
+});
+
+Deno.test("backup import: sanitizes template names", async () => {
+  resetStore();
+  await blob.setJSON("backup:g1:backup1", {
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {
+      templates: {
+        "My Template!": {
+          title: "Welcome",
+          description: "Hello!",
+          createdBy: "u1",
+          createdAt: "2024-01-01",
+          updatedAt: "2024-01-01",
+        },
+      },
+    },
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "import", id: "backup1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+
+  // Name should be sanitized: "My Template!" → "mytemplate"
+  const cleaned = await blob.getJSON<any>("template:g1:mytemplate");
+  assertEquals(cleaned?.title, "Welcome");
+  // Original unsanitized key should not exist
+  const original = await blob.getJSON<any>("template:g1:My Template!");
+  assertEquals(original, undefined);
+});
+
+Deno.test("backup import: skips templates with empty sanitized name", async () => {
+  resetStore();
+  await blob.setJSON("backup:g1:backup1", {
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {
+      templates: {
+        "!!!": {
+          title: "Bad Name",
+          description: "All special chars",
+          createdBy: "u1",
+          createdAt: "2024-01-01",
+          updatedAt: "2024-01-01",
+        },
+        "good": {
+          title: "Good",
+          description: "Valid name",
+          createdBy: "u1",
+          createdAt: "2024-01-01",
+          updatedAt: "2024-01-01",
+        },
+      },
+    },
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "import", id: "backup1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+
+  // "good" should exist, "!!!" should be silently dropped
+  const good = await blob.getJSON<any>("template:g1:good");
+  assertEquals(good?.title, "Good");
+});
+
+Deno.test("backup import: strips private-IP imageUrl from templates", async () => {
+  resetStore();
+  await blob.setJSON("backup:g1:backup1", {
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {
+      templates: {
+        test: {
+          title: "Test",
+          description: "Has private IP image",
+          imageUrl: "http://192.168.1.1/secret.png",
+          createdBy: "u1",
+          createdAt: "2024-01-01",
+          updatedAt: "2024-01-01",
+        },
+      },
+    },
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "import", id: "backup1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+
+  const template = await blob.getJSON<any>("template:g1:test");
+  assertEquals(template?.title, "Test");
+  assertEquals(template?.imageUrl, undefined); // private IP stripped
+});
+
+Deno.test("backup import: keeps valid public imageUrl in templates", async () => {
+  resetStore();
+  await blob.setJSON("backup:g1:backup1", {
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {
+      templates: {
+        test: {
+          title: "Test",
+          description: "Has public image",
+          imageUrl: "https://cdn.example.com/image.png",
+          createdBy: "u1",
+          createdAt: "2024-01-01",
+          updatedAt: "2024-01-01",
+        },
+      },
+    },
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "import", id: "backup1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+
+  const template = await blob.getJSON<any>("template:g1:test");
+  assertEquals(template?.imageUrl, "https://cdn.example.com/image.png");
 });
