@@ -20,7 +20,7 @@ import { createLogger } from "../../webhook/logger.ts";
 const logger = createLogger("Giveaway");
 
 const CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000; // 24 hours
-const ANNOUNCE_RETRY_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+const ANNOUNCE_RETRY_DELAY_MS = 15 * 60 * 1000; // 15 minutes
 export const MAX_ANNOUNCE_RETRIES = 3;
 
 export interface GiveawayConfig {

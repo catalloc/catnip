@@ -35,7 +35,7 @@ const DEFAULT_POLL_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_POLL_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const MAX_OPTION_LENGTH = 80;
 const CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000; // 24 hours
-const ANNOUNCE_RETRY_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+const ANNOUNCE_RETRY_DELAY_MS = 15 * 60 * 1000; // 15 minutes
 export const MAX_ANNOUNCE_RETRIES = 3;
 
 export function pollKey(guildId: string): string {

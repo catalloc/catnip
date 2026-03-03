@@ -14,7 +14,7 @@ const logger = createLogger("GiveawayCron");
 
 const MAX_DUE_PER_RUN = 100;
 const ITEM_TIMEOUT_MS = 30_000;
-const ANNOUNCE_RETRY_DELAY_MS = 5 * 60 * 1000;
+const ANNOUNCE_RETRY_DELAY_MS = 15 * 60 * 1000;
 const CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000;
 
 export default async function () {
