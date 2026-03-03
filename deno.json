@@ -1,0 +1,43 @@
+{
+  "$schema": "https://raw.githubusercontent.com/denoland/deno/348900b8b79f4a434cab4c74b3bc8d4d2fa8ee74/cli/schemas/config-file.v1.json",
+  "imports": {
+    "@std/assert": "jsr:@std/assert",
+    "https://esm.town/v/std/sqlite/main.ts": "./test/_mocks/sqlite.ts",
+    "https://esm.town/v/std/utils@85-main/index.ts": "./test/_mocks/val-utils.ts"
+  },
+  "lock": false,
+  "compilerOptions": {
+    "noImplicitAny": false,
+    "strict": false,
+    "types": [
+      "https://www.val.town/types/valtown.d.ts"
+    ],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "dom.asynciterable",
+      "deno.ns",
+      "deno.unstable"
+    ]
+  },
+  "lint": {
+    "files": {
+      "include": [
+        "deno:/https/esm.town/**/*"
+      ]
+    },
+    "rules": {
+      "exclude": [
+        "no-explicit-any",
+        "no-unresolved"
+      ]
+    }
+  },
+  "node_modules_dir": false,
+  "experimental": {
+    "unstable-node-globals": true,
+    "unstable-temporal": true,
+    "unstable-worker-options": true,
+    "unstable-sloppy-imports": true
+  }
+}
