@@ -136,17 +136,9 @@ export default defineCommand({
         return { success: false, error: "Username cannot be empty." };
       }
 
-      // Check for duplicate
       const key = streamKey(guildId, platform, username);
-      const existing = await kv.get<StreamTracker>(key);
-      if (existing) {
-        return {
-          success: false,
-          error: `**${displayName}** on ${PLATFORM_LABELS[platform]} is already being tracked in <#${existing.channelId}>.`,
-        };
-      }
 
-      // Check per-guild limit
+      // Check per-guild limit (fast-fail; off-by-one under extreme concurrency is acceptable)
       const allTrackers = await kv.list(`stream:${guildId}:`);
       if (allTrackers.length >= MAX_TRACKERS_PER_GUILD) {
         return {
@@ -165,7 +157,23 @@ export default defineCommand({
         addedAt: new Date().toISOString(),
       };
 
-      await kv.set(key, tracker);
+      // Atomic check-and-insert: kv.update uses INSERT OR IGNORE for new keys
+      // and CAS UPDATE for existing keys, preventing duplicate creation races
+      let alreadyExists = false;
+      const result = await kv.update<StreamTracker>(key, (current) => {
+        if (current) {
+          alreadyExists = true;
+          return current; // Don't overwrite existing tracker
+        }
+        return tracker;
+      });
+
+      if (alreadyExists) {
+        return {
+          success: false,
+          error: `**${displayName}** on ${PLATFORM_LABELS[platform]} is already being tracked in <#${result.channelId}>.`,
+        };
+      }
 
       return {
         success: true,

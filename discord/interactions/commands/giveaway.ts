@@ -20,6 +20,8 @@ import { createLogger } from "../../webhook/logger.ts";
 const logger = createLogger("Giveaway");
 
 const CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000; // 24 hours
+const ANNOUNCE_RETRY_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+export const MAX_ANNOUNCE_RETRIES = 3;
 
 export interface GiveawayConfig {
   prize: string;
@@ -31,6 +33,8 @@ export interface GiveawayConfig {
   ended: boolean;
   winners?: string[];
   lastPanelUpdate?: number;
+  announceFailed?: boolean;
+  announceRetries?: number;
 }
 
 export function giveawayKey(guildId: string): string {
@@ -92,6 +96,36 @@ export function pickWinners(entrants: string[], count: number): string[] {
   return winners;
 }
 
+/**
+ * Attempt to send the giveaway end announcement (embed update + winner message).
+ * Returns true if all Discord API calls succeeded.
+ */
+export async function announceGiveaway(guildId: string, config: GiveawayConfig): Promise<boolean> {
+  let success = true;
+
+  const patchResult = await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
+    embeds: [buildGiveawayEmbed(config, true)],
+    components: buildGiveawayComponents(guildId, true),
+  });
+  if (!patchResult.ok) {
+    logger.error(`Failed to update panel for ${guildId}: ${patchResult.error}`);
+    success = false;
+  }
+
+  const winnerText = config.winners!.length > 0
+    ? `Congratulations ${config.winners!.map((id) => `<@${id}>`).join(", ")}! You won **${config.prize}**!`
+    : `No one entered the giveaway for **${config.prize}**.`;
+  const postResult = await discordBotFetch("POST", `channels/${config.channelId}/messages`, {
+    content: `🎉 **Giveaway Ended!**\n${winnerText}`,
+  });
+  if (!postResult.ok) {
+    logger.error(`Failed to announce winners for ${guildId}: ${postResult.error}`);
+    success = false;
+  }
+
+  return success;
+}
+
 export async function endGiveaway(guildId: string): Promise<void> {
   const key = giveawayKey(guildId);
 
@@ -104,27 +138,21 @@ export async function endGiveaway(guildId: string): Promise<void> {
 
   if (!config) return; // no giveaway, already ended, or lost race
 
-  // We exclusively own the ended state — safe to update due_at for delayed cleanup
+  // Optimistic: schedule cleanup
   await kv.set(key, config, Date.now() + CLEANUP_DELAY_MS);
 
-  // Update panel embed
-  const patchResult = await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
-    embeds: [buildGiveawayEmbed(config, true)],
-    components: buildGiveawayComponents(guildId, true),
-  });
-  if (!patchResult.ok) {
-    logger.error(`Failed to update panel for ${guildId}: ${patchResult.error}`);
-  }
-
-  // Announce winners
-  const winnerText = config.winners!.length > 0
-    ? `Congratulations ${config.winners!.map((id) => `<@${id}>`).join(", ")}! You won **${config.prize}**!`
-    : `No one entered the giveaway for **${config.prize}**.`;
-  const postResult = await discordBotFetch("POST", `channels/${config.channelId}/messages`, {
-    content: `🎉 **Giveaway Ended!**\n${winnerText}`,
-  });
-  if (!postResult.ok) {
-    logger.error(`Failed to announce winners for ${guildId}: ${postResult.error}`);
+  const announced = await announceGiveaway(guildId, config);
+  if (!announced) {
+    // Override with retry schedule so the cron re-attempts the announcement
+    try {
+      await kv.set(
+        key,
+        { ...config, announceFailed: true, announceRetries: 0 },
+        Date.now() + ANNOUNCE_RETRY_DELAY_MS,
+      );
+    } catch {
+      logger.error(`Failed to schedule announce retry for giveaway ${guildId}`);
+    }
   }
 }
 
@@ -230,6 +258,15 @@ export default defineCommand({
       }
 
       config.messageId = post.data.id;
+
+      // Race guard: re-check after posting (narrows TOCTOU to microseconds)
+      const raceCheck = await kv.get<GiveawayConfig>(giveawayKey(guildId));
+      if (raceCheck && !raceCheck.ended) {
+        // Another admin created one while we were posting — clean up orphaned message
+        await discordBotFetch("DELETE", `channels/${channelId}/messages/${config.messageId}`).catch(() => {});
+        return { success: false, error: "A giveaway was just created by another admin. Please try again." };
+      }
+
       await kv.set(giveawayKey(guildId), config, config.endsAt);
 
       const unixSeconds = Math.floor(endsAt / 1000);

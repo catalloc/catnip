@@ -277,28 +277,31 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), DEFERRED_TIMEOUT_MS);
     try {
-      logger.info(`${logCtx} Executing...`);
       const timeout = new Promise<never>((_, reject) => {
         ac.signal.addEventListener("abort", () => reject(new Error("Command execution timed out")), { once: true });
       });
-      const result = await Promise.race([
-        command.execute({
-          guildId,
-          userId,
-          options,
-          config: command.config,
-          targetId,
-          resolved,
-          memberRoles,
-          memberPermissions,
-          signal: ac.signal,
-        }),
+      // Race covers both execute and followup so the combined time is bounded
+      await Promise.race([
+        (async () => {
+          logger.info(`${logCtx} Executing...`);
+          const result = await command.execute({
+            guildId,
+            userId,
+            options,
+            config: command.config,
+            targetId,
+            resolved,
+            memberRoles,
+            memberPermissions,
+            signal: ac.signal,
+          });
+          const message = formatResultMessage(result);
+          logger.info(`${logCtx} Sending followup`);
+          await sendFollowup(body.application_id, body.token, message, result, command.ephemeral !== false);
+          logger.info(`${logCtx} Completed successfully`);
+        })(),
         timeout,
       ]);
-      const message = formatResultMessage(result);
-      logger.info(`${logCtx} Sending followup`);
-      await sendFollowup(body.application_id, body.token, message, result, command.ephemeral !== false);
-      logger.info(`${logCtx} Completed successfully`);
     } catch (error) {
       logger.error(`${logCtx} Error executing:`, error);
       const userMsg = error instanceof UserFacingError

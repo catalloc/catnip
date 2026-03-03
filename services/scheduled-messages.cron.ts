@@ -81,6 +81,8 @@ export default async function () {
     }
 
     logger.info(`Run complete: ${due.length} scheduled message(s) processed`);
+  } catch (err) {
+    logger.error("Cron run failed:", err);
   } finally {
     await finalizeAllLoggers();
   }

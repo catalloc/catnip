@@ -15,7 +15,8 @@ import { discordBotFetch } from "../../discord-api.ts";
 import {
   type TicketData,
   ticketKey,
-  countOpenTickets,
+  claimTicketSlot,
+  releaseTicketSlot,
   buildStaffEmbed,
   buildStaffComponents,
   MAX_OPEN_TICKETS,
@@ -39,9 +40,9 @@ export default defineComponent({
       return { success: false, error: "Ticket system is not configured." };
     }
 
-    // Re-check ticket limit (race guard)
-    const openCount = await countOpenTickets(guildId, userId);
-    if (openCount >= MAX_OPEN_TICKETS) {
+    // Atomically claim a ticket slot (combined limit check + increment)
+    const slotClaimed = await claimTicketSlot(guildId, userId);
+    if (!slotClaimed) {
       return { success: false, error: `You already have ${MAX_OPEN_TICKETS} open tickets.` };
     }
 
@@ -78,6 +79,7 @@ export default defineComponent({
 
     if (!createResult.ok) {
       logger.warn(`Failed to create ticket channel for guild ${guildId}: ${createResult.error}`);
+      await releaseTicketSlot(guildId, userId);
       return { success: false, error: "Failed to create ticket channel. The bot may lack Manage Channels permission." };
     }
 
@@ -124,7 +126,15 @@ export default defineComponent({
     }
 
     // Store ticket in KV (no due_at while open)
-    await kv.set(ticketKey(guildId, channelId), ticket);
+    try {
+      await kv.set(ticketKey(guildId, channelId), ticket);
+    } catch (err) {
+      // KV write failed — clean up the orphaned Discord channel + release slot
+      logger.error(`Failed to store ticket in KV for channel ${channelId}:`, err);
+      await discordBotFetch("DELETE", `channels/${channelId}`).catch(() => {});
+      await releaseTicketSlot(guildId, userId);
+      return { success: false, error: "Failed to create ticket. Please try again." };
+    }
 
     return {
       success: true,

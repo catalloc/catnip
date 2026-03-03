@@ -110,7 +110,13 @@ export const _internals = { isRateLimited };
  * POST /patreon/webhook
  */
 export async function handlePatreonWebhook(req: Request): Promise<Response> {
-  if (await isRateLimited()) {
+  let rateLimited = false;
+  try {
+    rateLimited = await isRateLimited();
+  } catch (err) {
+    logger.error("Rate limit check failed, allowing request:", err);
+  }
+  if (rateLimited) {
     return new Response(JSON.stringify({ error: "Too many requests" }), {
       status: 429,
       headers: { "Content-Type": "application/json", "Retry-After": "60" },

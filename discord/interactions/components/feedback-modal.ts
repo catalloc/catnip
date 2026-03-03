@@ -8,6 +8,9 @@
 import { defineComponent } from "../define-component.ts";
 import { CONFIG, EmbedColors } from "../../constants.ts";
 import { send } from "../../webhook/send.ts";
+import { createLogger } from "../../webhook/logger.ts";
+
+const logger = createLogger("FeedbackModal");
 
 export default defineComponent({
   customId: "feedback-modal",
@@ -33,6 +36,7 @@ export default defineComponent({
         CONFIG.feedbackWebhook,
       );
       if (!result.success) {
+        logger.error(`Failed to send feedback webhook: ${result.error}`);
         return { success: false, error: "Failed to submit feedback. Please try again later." };
       }
     }

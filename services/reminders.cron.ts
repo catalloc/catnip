@@ -80,6 +80,8 @@ export default async function () {
     }
 
     logger.info(`Run complete: ${due.length} reminder(s) processed`);
+  } catch (err) {
+    logger.error("Cron run failed:", err);
   } finally {
     await finalizeAllLoggers();
   }

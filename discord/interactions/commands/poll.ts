@@ -27,12 +27,16 @@ export interface PollConfig {
   endsAt: number;
   ended: boolean;
   lastPanelUpdate?: number;
+  announceFailed?: boolean;
+  announceRetries?: number;
 }
 
 const DEFAULT_POLL_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_POLL_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const MAX_OPTION_LENGTH = 80;
 const CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000; // 24 hours
+const ANNOUNCE_RETRY_DELAY_MS = 5 * 60 * 1000; // 5 minutes
+export const MAX_ANNOUNCE_RETRIES = 3;
 
 export function pollKey(guildId: string): string {
   return `poll:${guildId}`;
@@ -95,6 +99,22 @@ export function buildPollComponents(guildId: string, options: string[], ended = 
   return rows;
 }
 
+/**
+ * Attempt to send the poll results announcement (embed update).
+ * Returns true if the Discord API call succeeded.
+ */
+export async function announcePoll(guildId: string, config: PollConfig): Promise<boolean> {
+  const patchResult = await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
+    embeds: [buildPollEmbed(config, true)],
+    components: buildPollComponents(guildId, config.options, true),
+  });
+  if (!patchResult.ok) {
+    logger.error(`Failed to update panel for ${guildId}: ${patchResult.error}`);
+    return false;
+  }
+  return true;
+}
+
 export async function endPoll(guildId: string): Promise<void> {
   const key = pollKey(guildId);
 
@@ -106,15 +126,21 @@ export async function endPoll(guildId: string): Promise<void> {
 
   if (!config) return; // no poll, already ended, or lost race
 
-  // We exclusively own the ended state — safe to update due_at for delayed cleanup
+  // Optimistic: schedule cleanup
   await kv.set(key, config, Date.now() + CLEANUP_DELAY_MS);
 
-  const patchResult = await discordBotFetch("PATCH", `channels/${config.channelId}/messages/${config.messageId}`, {
-    embeds: [buildPollEmbed(config, true)],
-    components: buildPollComponents(guildId, config.options, true),
-  });
-  if (!patchResult.ok) {
-    logger.error(`Failed to update panel for ${guildId}: ${patchResult.error}`);
+  const announced = await announcePoll(guildId, config);
+  if (!announced) {
+    // Override with retry schedule so the cron re-attempts the announcement
+    try {
+      await kv.set(
+        key,
+        { ...config, announceFailed: true, announceRetries: 0 },
+        Date.now() + ANNOUNCE_RETRY_DELAY_MS,
+      );
+    } catch {
+      logger.error(`Failed to schedule announce retry for poll ${guildId}`);
+    }
   }
 }
 
@@ -237,6 +263,15 @@ export default defineCommand({
       }
 
       config.messageId = post.data.id;
+
+      // Race guard: re-check after posting (narrows TOCTOU to microseconds)
+      const raceCheck = await kv.get<PollConfig>(pollKey(guildId));
+      if (raceCheck && !raceCheck.ended) {
+        // Another admin created one while we were posting — clean up orphaned message
+        await discordBotFetch("DELETE", `channels/${channelId}/messages/${config.messageId}`).catch(() => {});
+        return { success: false, error: "A poll was just created by another admin. Please try again." };
+      }
+
       await kv.set(pollKey(guildId), config, config.endsAt);
 
       return { success: true, message: `Poll started in <#${channelId}>! Ends <t:${Math.floor(endsAt / 1000)}:R>.` };

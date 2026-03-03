@@ -22,6 +22,60 @@ export const KV_PREFIX = "ticket:";
 export const DELETE_DELAY_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const MAX_OPEN_TICKETS = 3;
 
+function slotKey(guildId: string, userId: string): string {
+  return `ticket-slots:${guildId}:${userId}`;
+}
+
+/**
+ * Atomically claim a ticket creation slot.
+ * Returns true if under the limit (slot reserved), false if at/over the limit.
+ *
+ * On first use (counter not yet initialized), seeds from actual ticket count.
+ * On limit hit, falls back to countOpenTickets to recover from counter drift.
+ */
+export async function claimTicketSlot(guildId: string, userId: string): Promise<boolean> {
+  const key = slotKey(guildId, userId);
+
+  // Seed counter from actual count on first use
+  const existing = await kv.get<number>(key);
+  if (existing === null) {
+    const actualCount = await countOpenTickets(guildId, userId);
+    await kv.set(key, actualCount);
+  }
+
+  // Atomically check limit + increment
+  let limitHit = false;
+  await kv.update<number>(key, (current) => {
+    const count = current ?? 0;
+    if (count >= MAX_OPEN_TICKETS) {
+      limitHit = true;
+      return count;
+    }
+    return count + 1;
+  });
+
+  if (!limitHit) return true;
+
+  // Counter says limit — verify with actual scan to recover from drift
+  const actualCount = await countOpenTickets(guildId, userId);
+  if (actualCount >= MAX_OPEN_TICKETS) return false;
+
+  // Counter was stale — reset to actual + 1 (claim the slot)
+  await kv.set(key, actualCount + 1);
+  return true;
+}
+
+/** Release a ticket slot (e.g., on creation failure or ticket close). */
+export async function releaseTicketSlot(guildId: string, userId: string): Promise<void> {
+  try {
+    await kv.update<number>(slotKey(guildId, userId), (current) =>
+      Math.max((current ?? 1) - 1, 0),
+    );
+  } catch {
+    // Non-critical — counter drift is self-healing via claimTicketSlot fallback
+  }
+}
+
 export interface TicketData {
   guildId: string;
   channelId: string;
@@ -125,6 +179,9 @@ export async function closeTicket(
   });
 
   if (!ticket) return null;
+
+  // Release the ticket slot for this user
+  await releaseTicketSlot(guildId, ticket.userId);
 
   // Set due_at for auto-deletion
   await kv.set(key, ticket, Date.now() + DELETE_DELAY_MS);

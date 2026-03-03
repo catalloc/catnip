@@ -58,6 +58,8 @@ export default async function () {
     if (entries.length > 0) {
       logger.info(`Run complete: ${entries.length} item(s) — ${deleted} deleted, ${failed} failed`);
     }
+  } catch (err) {
+    logger.error("Cron run failed:", err);
   } finally {
     await finalizeAllLoggers();
   }
