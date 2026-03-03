@@ -18,6 +18,9 @@ import { defineCommand, OptionTypes } from "../define-command.ts";
 import { EmbedColors, isGuildAdmin } from "../../constants.ts";
 import { blob } from "../../persistence/blob.ts";
 import { createAutocompleteResponse } from "../patterns.ts";
+import { ExpiringCache } from "../../helpers/cache.ts";
+import { checkEntityAccess, blobAllow, blobDeny } from "../../helpers/permissions.ts";
+import { formatPermissionInfo } from "../../helpers/format.ts";
 
 export interface PasteEntry {
   content: string;
@@ -31,8 +34,6 @@ export interface PasteEntry {
 const MAX_PASTES = 50;
 const MAX_PASTES_PER_USER = 15;
 const MAX_CONTENT_LENGTH = 6000;
-const AUTOCOMPLETE_CACHE_TTL_MS = 30_000;
-const MAX_CACHE_ENTRIES = 500;
 
 function blobKey(guildId: string, code: string): string {
   return `paste:${guildId}:${code}`;
@@ -72,44 +73,13 @@ async function listPastes(guildId: string): Promise<PasteListItem[]> {
   return items;
 }
 
-const listCache = new Map<string, { items: PasteListItem[]; expiresAt: number }>();
-
-async function listPastesCached(guildId: string): Promise<PasteListItem[]> {
-  const cacheKey = blobPrefix(guildId);
-  const cached = listCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) return cached.items;
-  const items = await listPastes(guildId);
-  if (listCache.size >= MAX_CACHE_ENTRIES) {
-    const oldest = listCache.keys().next().value;
-    if (oldest !== undefined) listCache.delete(oldest);
-  }
-  listCache.set(cacheKey, { items, expiresAt: Date.now() + AUTOCOMPLETE_CACHE_TTL_MS });
-  return items;
-}
+const listCache = new ExpiringCache<string, PasteListItem[]>(30_000, 500);
 
 function invalidateCache(guildId: string): void {
   listCache.delete(blobPrefix(guildId));
 }
 
-/** Check if user has permission to get a paste. Unrestricted when both lists are empty/missing. */
-async function canGet(
-  entry: PasteEntry,
-  guildId: string,
-  userId: string,
-  memberRoles: string[],
-  memberPermissions?: string,
-): Promise<boolean> {
-  if (await isGuildAdmin(guildId, userId, memberRoles, memberPermissions)) return true;
-  if (entry.allowedUsers?.includes(userId)) return true;
-  if (entry.allowedRoles?.length) {
-    return memberRoles.some((r) => entry.allowedRoles!.includes(r));
-  }
-  // No restrictions — open by default
-  if (!entry.allowedUsers?.length && !entry.allowedRoles?.length) return true;
-  return false;
-}
-
-export const _internals = { blobKey, blobPrefix, generateCode, sanitizeCode, canGet };
+export const _internals = { blobKey, blobPrefix, generateCode, sanitizeCode, canGet: checkEntityAccess };
 
 export default defineCommand({
   name: "paste",
@@ -271,7 +241,7 @@ export default defineCommand({
     const query = (focused?.value as string || "").toLowerCase();
 
     return (async () => {
-      const items = await listPastesCached(guildId);
+      const items = await listCache.getOrFetch(blobPrefix(guildId), () => listPastes(guildId));
       const filtered = query
         ? items.filter((i) => i.code.includes(query) || i.entry.content.toLowerCase().includes(query))
         : items;
@@ -326,7 +296,7 @@ export default defineCommand({
         return { success: false, error: `Paste \`${code}\` not found.` };
       }
 
-      if (!(await canGet(entry, guildId, userId, roles, memberPermissions))) {
+      if (!(await checkEntityAccess(entry, guildId, userId, roles, memberPermissions))) {
         return { success: false, error: "You don't have permission to view this paste." };
       }
 
@@ -347,15 +317,7 @@ export default defineCommand({
       const lines = items.map((i) => {
         const preview = i.entry.content.slice(0, 50).replace(/\n/g, " ") +
           (i.entry.content.length > 50 ? "..." : "");
-        const parts: string[] = [];
-        if (i.entry.allowedRoles?.length) {
-          parts.push(`roles: ${i.entry.allowedRoles.map((r) => `<@&${r}>`).join(", ")}`);
-        }
-        if (i.entry.allowedUsers?.length) {
-          parts.push(`users: ${i.entry.allowedUsers.map((u) => `<@${u}>`).join(", ")}`);
-        }
-        const permInfo = parts.length ? ` (${parts.join("; ")})` : "";
-        return `\`${i.code}\` — ${preview}${permInfo}`;
+        return `\`${i.code}\` — ${preview}${formatPermissionInfo(i.entry)}`;
       });
 
       return {
@@ -393,116 +355,24 @@ export default defineCommand({
       return { success: true, message: `Paste \`${code}\` deleted.` };
     }
 
-    if (sub === "allow-role") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage paste roles." };
-      }
-
+    if (sub === "allow-role" || sub === "deny-role" || sub === "allow-user" || sub === "deny-user") {
       const code = sanitizeCode(options.code as string);
       if (!code) {
         return { success: false, error: "Invalid paste code." };
       }
+      const isRole = sub.endsWith("-role");
+      const isAllow = sub.startsWith("allow");
+      const targetId = isRole ? (options.role as string) : (options.user as string);
+      const handler = isAllow ? blobAllow : blobDeny;
 
-      const entry = await blob.getJSON<PasteEntry>(blobKey(guildId, code));
-      if (!entry) {
-        return { success: false, error: `Paste \`${code}\` not found.` };
-      }
-
-      const roleId = options.role as string;
-      entry.allowedRoles = entry.allowedRoles ?? [];
-      if (entry.allowedRoles.includes(roleId)) {
-        return { success: false, error: `Role <@&${roleId}> already has view permission for \`${code}\`.` };
-      }
-
-      entry.allowedRoles.push(roleId);
-      await blob.setJSON(blobKey(guildId, code), entry);
-      invalidateCache(guildId);
-
-      return { success: true, message: `Role <@&${roleId}> can now view paste \`${code}\`.` };
-    }
-
-    if (sub === "deny-role") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage paste roles." };
-      }
-
-      const code = sanitizeCode(options.code as string);
-      if (!code) {
-        return { success: false, error: "Invalid paste code." };
-      }
-
-      const entry = await blob.getJSON<PasteEntry>(blobKey(guildId, code));
-      if (!entry) {
-        return { success: false, error: `Paste \`${code}\` not found.` };
-      }
-
-      const roleId = options.role as string;
-      entry.allowedRoles = entry.allowedRoles ?? [];
-      if (!entry.allowedRoles.includes(roleId)) {
-        return { success: false, error: `Role <@&${roleId}> doesn't have view permission for \`${code}\`.` };
-      }
-
-      entry.allowedRoles = entry.allowedRoles.filter((r) => r !== roleId);
-      await blob.setJSON(blobKey(guildId, code), entry);
-      invalidateCache(guildId);
-
-      return { success: true, message: `Role <@&${roleId}> can no longer view paste \`${code}\`.` };
-    }
-
-    if (sub === "allow-user") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage paste users." };
-      }
-
-      const code = sanitizeCode(options.code as string);
-      if (!code) {
-        return { success: false, error: "Invalid paste code." };
-      }
-
-      const entry = await blob.getJSON<PasteEntry>(blobKey(guildId, code));
-      if (!entry) {
-        return { success: false, error: `Paste \`${code}\` not found.` };
-      }
-
-      const targetUserId = options.user as string;
-      entry.allowedUsers = entry.allowedUsers ?? [];
-      if (entry.allowedUsers.includes(targetUserId)) {
-        return { success: false, error: `User <@${targetUserId}> already has view permission for \`${code}\`.` };
-      }
-
-      entry.allowedUsers.push(targetUserId);
-      await blob.setJSON(blobKey(guildId, code), entry);
-      invalidateCache(guildId);
-
-      return { success: true, message: `User <@${targetUserId}> can now view paste \`${code}\`.` };
-    }
-
-    if (sub === "deny-user") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage paste users." };
-      }
-
-      const code = sanitizeCode(options.code as string);
-      if (!code) {
-        return { success: false, error: "Invalid paste code." };
-      }
-
-      const entry = await blob.getJSON<PasteEntry>(blobKey(guildId, code));
-      if (!entry) {
-        return { success: false, error: `Paste \`${code}\` not found.` };
-      }
-
-      const targetUserId = options.user as string;
-      entry.allowedUsers = entry.allowedUsers ?? [];
-      if (!entry.allowedUsers.includes(targetUserId)) {
-        return { success: false, error: `User <@${targetUserId}> doesn't have view permission for \`${code}\`.` };
-      }
-
-      entry.allowedUsers = entry.allowedUsers.filter((u) => u !== targetUserId);
-      await blob.setJSON(blobKey(guildId, code), entry);
-      invalidateCache(guildId);
-
-      return { success: true, message: `User <@${targetUserId}> can no longer view paste \`${code}\`.` };
+      return handler({
+        guildId, userId, memberRoles: roles, memberPermissions,
+        entityName: code, entityLabel: "paste", verb: "view",
+        targetId, targetType: isRole ? "role" : "user",
+        getEntry: () => blob.getJSON<PasteEntry>(blobKey(guildId, code)),
+        saveEntry: (e) => blob.setJSON(blobKey(guildId, code), e),
+        invalidateCache: () => invalidateCache(guildId),
+      });
     }
 
     return { success: false, error: "Please use a subcommand." };

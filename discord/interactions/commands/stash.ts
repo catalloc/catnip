@@ -14,6 +14,7 @@ import { defineCommand, OptionTypes } from "../define-command.ts";
 import { EmbedColors } from "../../constants.ts";
 import { blob } from "../../persistence/blob.ts";
 import { createAutocompleteResponse } from "../patterns.ts";
+import { ExpiringCache } from "../../helpers/cache.ts";
 
 interface StashEntry {
   content: string;
@@ -24,8 +25,6 @@ interface StashEntry {
 const MAX_ENTRIES = 25;
 const MAX_CONTENT_LENGTH = 4000;
 const MAX_NAME_LENGTH = 32;
-const AUTOCOMPLETE_CACHE_TTL_MS = 30_000;
-const MAX_CACHE_ENTRIES = 500;
 
 function blobKey(userId: string, name: string): string {
   return `stash:${userId}:${name}`;
@@ -40,25 +39,12 @@ function sanitizeName(raw: string): string {
   return raw.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, MAX_NAME_LENGTH);
 }
 
-const listCache = new Map<string, { keys: string[]; expiresAt: number }>();
+const listCache = new ExpiringCache<string, string[]>(30_000, 500);
 
 async function listUserKeys(userId: string): Promise<string[]> {
   const prefix = blobPrefix(userId);
   const entries = await blob.list(prefix);
   return entries.map((e) => e.key.slice(prefix.length));
-}
-
-async function listUserKeysCached(userId: string): Promise<string[]> {
-  const cacheKey = blobPrefix(userId);
-  const cached = listCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) return cached.keys;
-  const keys = await listUserKeys(userId);
-  if (listCache.size >= MAX_CACHE_ENTRIES) {
-    const oldest = listCache.keys().next().value;
-    if (oldest !== undefined) listCache.delete(oldest);
-  }
-  listCache.set(cacheKey, { keys, expiresAt: Date.now() + AUTOCOMPLETE_CACHE_TTL_MS });
-  return keys;
 }
 
 function invalidateCache(userId: string): void {
@@ -145,7 +131,7 @@ export default defineCommand({
     const query = (focused?.value as string || "").toLowerCase();
 
     return (async () => {
-      const keys = await listUserKeysCached(userId);
+      const keys = await listCache.getOrFetch(blobPrefix(userId), () => listUserKeys(userId));
       const filtered = query ? keys.filter((k) => k.includes(query)) : keys;
       return createAutocompleteResponse(
         filtered.map((k) => ({ name: k, value: k })),

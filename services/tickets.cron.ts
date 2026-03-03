@@ -8,21 +8,20 @@
 import { kv } from "../discord/persistence/kv.ts";
 import { type TicketData, KV_PREFIX } from "../discord/interactions/commands/ticket.ts";
 import { discordBotFetch } from "../discord/discord-api.ts";
-import { createLogger, finalizeAllLoggers } from "../discord/webhook/logger.ts";
 import { withTimeout } from "../discord/helpers/timeout.ts";
+import { runCron } from "../discord/helpers/cron.ts";
 
-const logger = createLogger("TicketCron");
-
-const MAX_DUE_PER_RUN = 50;
 const ITEM_TIMEOUT_MS = 30_000;
 const RETRY_DELAY_MS = 60 * 60 * 1000; // 1 hour
 
 export default async function () {
-  try {
-    const entries = await kv.listDue(Date.now(), KV_PREFIX, MAX_DUE_PER_RUN);
-    let deleted = 0, failed = 0;
+  let deleted = 0, failed = 0;
 
-    await Promise.allSettled(entries.map(async (entry) => {
+  await runCron({
+    name: "TicketCron",
+    prefix: KV_PREFIX,
+    maxDue: 50,
+    async process(entry, logger) {
       const ticket = entry.value as TicketData;
 
       // Only process closed tickets
@@ -53,14 +52,6 @@ export default async function () {
           logger.error(`Failed to re-insert ticket ${entry.key} for retry:`, reinsertErr);
         }
       }
-    }));
-
-    if (entries.length > 0) {
-      logger.info(`Run complete: ${entries.length} item(s) — ${deleted} deleted, ${failed} failed`);
-    }
-  } catch (err) {
-    logger.error("Cron run failed:", err);
-  } finally {
-    await finalizeAllLoggers();
-  }
+    },
+  });
 }

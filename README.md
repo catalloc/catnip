@@ -986,6 +986,60 @@ Presets: `.success(desc)`, `.error(desc)`, `.info(desc)`, `.warning(desc)`.
 - `secureRandomIndex(max)` — Cryptographically secure random integer in
   `[0, max)` using rejection sampling (no modulo bias)
 
+### TTL Cache (`discord/helpers/cache.ts`)
+
+```typescript
+import { ExpiringCache } from "../../helpers/cache.ts";
+
+const cache = new ExpiringCache<string, Item[]>(30_000, 500);
+const items = await cache.getOrFetch(key, () => fetchItems());
+cache.delete(key); // invalidate
+```
+
+Generic cache with TTL expiry and max-entry eviction. Used by paste, template,
+tag, stash, backup, and schedule commands for autocomplete caching.
+
+### Permissions (`discord/helpers/permissions.ts`)
+
+```typescript
+import { checkEntityAccess, blobAllow, blobDeny, kvAllow, kvDeny } from "../../helpers/permissions.ts";
+
+// Check if user can access an entity (open by default)
+await checkEntityAccess(entry, guildId, userId, roles, perms);
+// Check with closed default (admin-only when no restrictions)
+await checkEntityAccess(entry, guildId, userId, roles, perms, { defaultOpen: false });
+```
+
+Shared permission checking and role/user CRUD for blob-stored and KV-stored
+entities. Used by paste, template, and tag commands.
+
+### Format (`discord/helpers/format.ts`)
+
+```typescript
+import { formatPermissionInfo, discordTimestamp } from "../../helpers/format.ts";
+
+formatPermissionInfo(entry);                // " (roles: <@&r1>; users: <@u1>)"
+formatPermissionInfo(entry, "admin-only");  // " (admin-only)" when no restrictions
+discordTimestamp(Date.now());               // "<t:1700000000:R>"
+```
+
+### Cron (`discord/helpers/cron.ts`)
+
+```typescript
+import { runCron, deliverWithRetry } from "../../helpers/cron.ts";
+
+await runCron({
+  name: "MyCron",
+  prefix: "myprefix:",
+  process: async (entry, logger) => {
+    await deliverWithRetry({ entry, deliver: ..., logger, entityLabel: "item" });
+  },
+});
+```
+
+Shared cron lifecycle (logger, listDue, allSettled, finalize) and
+claim-delete + delivery + backoff retry pattern.
+
 ### Errors (`discord/interactions/errors.ts`)
 
 `UserFacingError` — Custom error class with a `userMessage` shown to Discord
@@ -1210,9 +1264,13 @@ All external dependencies are mocked so tests run offline and in isolation:
 │   ├── discord-api.ts            # Discord API client with retry logic
 │   ├── pages.ts                  # HTML pages (legal, linked roles)
 │   ├── helpers/
+│   │   ├── cache.ts              # ExpiringCache with TTL + max entries
+│   │   ├── cron.ts               # runCron() + deliverWithRetry() helpers
 │   │   ├── crypto.ts             # timingSafeEqual, secureRandomIndex
 │   │   ├── duration.ts           # Human-readable duration parser
 │   │   ├── embed-builder.ts      # Fluent embed builder
+│   │   ├── format.ts             # formatPermissionInfo, discordTimestamp
+│   │   ├── permissions.ts        # checkEntityAccess, blob/KV perm CRUD
 │   │   └── timeout.ts            # withTimeout() utility
 │   ├── linked-roles/
 │   │   ├── define-verifier.ts    # defineVerifier() helper and types

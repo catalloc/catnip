@@ -12,6 +12,7 @@
 import { defineCommand, OptionTypes } from "../define-command.ts";
 import { kv } from "../../persistence/kv.ts";
 import { parseDuration } from "../../helpers/duration.ts";
+import { ExpiringCache } from "../../helpers/cache.ts";
 
 export interface ScheduledMessage {
   guildId: string;
@@ -25,28 +26,11 @@ export interface ScheduledMessage {
 
 const MAX_SCHEDULED_PER_GUILD = 25;
 const KV_PREFIX = "scheduled-msg:";
-const AUTOCOMPLETE_CACHE_TTL_MS = 30_000; // 30 seconds
-const MAX_CACHE_ENTRIES = 500;
 
-const autocompleteCache = new Map<string, { data: Array<{ key: string; value: unknown }>; expiresAt: number }>();
+const autocompleteCache = new ExpiringCache<string, Array<{ key: string; value: unknown }>>(30_000, 500);
 
 function kvPrefix(guildId: string): string {
   return `${KV_PREFIX}${guildId}:`;
-}
-
-async function getScheduledMessagesCached(guildId: string): Promise<Array<{ key: string; value: unknown }>> {
-  const prefix = kvPrefix(guildId);
-  const cached = autocompleteCache.get(prefix);
-  if (cached && Date.now() < cached.expiresAt) {
-    return cached.data;
-  }
-  const data = await kv.list(prefix);
-  if (autocompleteCache.size >= MAX_CACHE_ENTRIES) {
-    const oldest = autocompleteCache.keys().next().value;
-    if (oldest !== undefined) autocompleteCache.delete(oldest);
-  }
-  autocompleteCache.set(prefix, { data, expiresAt: Date.now() + AUTOCOMPLETE_CACHE_TTL_MS });
-  return data;
 }
 
 function invalidateScheduleCache(guildId: string): void {
@@ -203,7 +187,7 @@ export default defineCommand({
 
     // Return a promise — we need to fetch from KV
     return (async () => {
-      const entries = await getScheduledMessagesCached(guildId);
+      const entries = await autocompleteCache.getOrFetch(kvPrefix(guildId), () => kv.list(kvPrefix(guildId)));
       const choices = entries
         .map((e) => {
           const msg = e.value as ScheduledMessage;

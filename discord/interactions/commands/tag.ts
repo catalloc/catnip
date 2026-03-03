@@ -19,6 +19,9 @@ import { defineCommand, OptionTypes } from "../define-command.ts";
 import { EmbedColors, isGuildAdmin } from "../../constants.ts";
 import { kv } from "../../persistence/kv.ts";
 import { createAutocompleteResponse } from "../patterns.ts";
+import { ExpiringCache } from "../../helpers/cache.ts";
+import { checkEntityAccess, kvAllow, kvDeny, type PermissionEntry } from "../../helpers/permissions.ts";
+import { formatPermissionInfo } from "../../helpers/format.ts";
 
 export interface TagEntry {
   content: string;
@@ -34,10 +37,8 @@ interface TagStore {
 
 const MAX_TAGS = 50;
 const MAX_TAG_NAME_LENGTH = 64;
-const AUTOCOMPLETE_CACHE_TTL_MS = 30_000; // 30 seconds
-const MAX_CACHE_ENTRIES = 500;
 
-const tagCache = new Map<string, { data: TagStore; expiresAt: number }>();
+const tagCache = new ExpiringCache<string, TagStore>(30_000, 500);
 
 function kvKey(guildId: string): string {
   return `tags:${guildId}`;
@@ -52,46 +53,12 @@ async function getTags(guildId: string): Promise<TagStore> {
   return (await kv.get<TagStore>(kvKey(guildId))) ?? {};
 }
 
-/** Cached read for autocomplete — avoids hitting KV on every keystroke. */
-async function getTagsCached(guildId: string): Promise<TagStore> {
-  const key = kvKey(guildId);
-  const cached = tagCache.get(key);
-  if (cached && Date.now() < cached.expiresAt) {
-    return cached.data;
-  }
-  const data = await getTags(guildId);
-  if (tagCache.size >= MAX_CACHE_ENTRIES) {
-    const oldest = tagCache.keys().next().value;
-    if (oldest !== undefined) tagCache.delete(oldest);
-  }
-  tagCache.set(key, { data, expiresAt: Date.now() + AUTOCOMPLETE_CACHE_TTL_MS });
-  return data;
-}
-
 /** Invalidate the autocomplete cache for a guild (call after mutations). */
 function invalidateTagCache(guildId: string): void {
   tagCache.delete(kvKey(guildId));
 }
 
-/** Check if user has permission to view a tag. Unrestricted when both lists are empty/missing. */
-async function canView(
-  entry: TagEntry,
-  guildId: string,
-  userId: string,
-  memberRoles: string[],
-  memberPermissions?: string,
-): Promise<boolean> {
-  if (await isGuildAdmin(guildId, userId, memberRoles, memberPermissions)) return true;
-  if (entry.allowedUsers?.includes(userId)) return true;
-  if (entry.allowedRoles?.length) {
-    return memberRoles.some((r) => entry.allowedRoles!.includes(r));
-  }
-  // No restrictions — open by default
-  if (!entry.allowedUsers?.length && !entry.allowedRoles?.length) return true;
-  return false;
-}
-
-export const _internals = { sanitizeTagName, kvKey, canView };
+export const _internals = { sanitizeTagName, kvKey, canView: checkEntityAccess };
 
 export default defineCommand({
   name: "tag",
@@ -277,7 +244,7 @@ export default defineCommand({
     const query = (focused?.value as string || "").toLowerCase();
 
     return (async () => {
-      const tags = await getTagsCached(guildId);
+      const tags = await tagCache.getOrFetch(kvKey(guildId), () => getTags(guildId));
       const names = Object.keys(tags);
       const filtered = query
         ? names.filter((n) => n.includes(query))
@@ -301,7 +268,7 @@ export default defineCommand({
         return { success: false, error: `Tag \`${name}\` not found.` };
       }
 
-      if (!(await canView(tag, guildId, userId, roles, memberPermissions))) {
+      if (!(await checkEntityAccess(tag, guildId, userId, roles, memberPermissions))) {
         return { success: false, error: "You don't have permission to view this tag." };
       }
 
@@ -387,120 +354,33 @@ export default defineCommand({
       return { success: true, message: `Tag \`${name}\` deleted.` };
     }
 
-    if (sub === "allow-role") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage tag roles." };
-      }
-
+    if (sub === "allow-role" || sub === "deny-role" || sub === "allow-user" || sub === "deny-user") {
       const name = sanitizeTagName(options.name as string);
-      const roleId = options.role as string;
+      const isRole = sub.endsWith("-role");
+      const isAllow = sub.startsWith("allow");
+      const targetId = isRole ? (options.role as string) : (options.user as string);
+      const handler = isAllow ? kvAllow : kvDeny;
 
-      let error: string | null = null;
-      await kv.update<TagStore>(kvKey(guildId), (current) => {
-        const tags = current ?? {};
-        if (!tags[name]) {
-          error = `Tag \`${name}\` not found.`;
-          return tags;
-        }
-        tags[name].allowedRoles = tags[name].allowedRoles ?? [];
-        if (tags[name].allowedRoles!.includes(roleId)) {
-          error = `Role <@&${roleId}> already has view permission for \`${name}\`.`;
-          return tags;
-        }
-        tags[name].allowedRoles!.push(roleId);
-        return tags;
+      return handler({
+        guildId, userId, memberRoles: roles, memberPermissions,
+        entityName: name, entityLabel: "tag", verb: "view",
+        targetId, targetType: isRole ? "role" : "user",
+        kvUpdate: async (mutator) => {
+          let error: string | null = null;
+          await kv.update<TagStore>(kvKey(guildId), (current) => {
+            const tags = current ?? {};
+            const { entry, error: mutErr } = mutator(tags[name] ?? null);
+            if (mutErr) {
+              error = mutErr;
+            } else if (entry) {
+              tags[name] = entry as TagEntry;
+            }
+            return tags;
+          });
+          return error;
+        },
+        invalidateCache: () => invalidateTagCache(guildId),
       });
-      invalidateTagCache(guildId);
-
-      if (error) return { success: false, error };
-      return { success: true, message: `Role <@&${roleId}> can now view tag \`${name}\`.` };
-    }
-
-    if (sub === "deny-role") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage tag roles." };
-      }
-
-      const name = sanitizeTagName(options.name as string);
-      const roleId = options.role as string;
-
-      let error: string | null = null;
-      await kv.update<TagStore>(kvKey(guildId), (current) => {
-        const tags = current ?? {};
-        if (!tags[name]) {
-          error = `Tag \`${name}\` not found.`;
-          return tags;
-        }
-        tags[name].allowedRoles = tags[name].allowedRoles ?? [];
-        if (!tags[name].allowedRoles!.includes(roleId)) {
-          error = `Role <@&${roleId}> doesn't have view permission for \`${name}\`.`;
-          return tags;
-        }
-        tags[name].allowedRoles = tags[name].allowedRoles!.filter((r) => r !== roleId);
-        return tags;
-      });
-      invalidateTagCache(guildId);
-
-      if (error) return { success: false, error };
-      return { success: true, message: `Role <@&${roleId}> can no longer view tag \`${name}\`.` };
-    }
-
-    if (sub === "allow-user") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage tag users." };
-      }
-
-      const name = sanitizeTagName(options.name as string);
-      const targetUserId = options.user as string;
-
-      let error: string | null = null;
-      await kv.update<TagStore>(kvKey(guildId), (current) => {
-        const tags = current ?? {};
-        if (!tags[name]) {
-          error = `Tag \`${name}\` not found.`;
-          return tags;
-        }
-        tags[name].allowedUsers = tags[name].allowedUsers ?? [];
-        if (tags[name].allowedUsers!.includes(targetUserId)) {
-          error = `User <@${targetUserId}> already has view permission for \`${name}\`.`;
-          return tags;
-        }
-        tags[name].allowedUsers!.push(targetUserId);
-        return tags;
-      });
-      invalidateTagCache(guildId);
-
-      if (error) return { success: false, error };
-      return { success: true, message: `User <@${targetUserId}> can now view tag \`${name}\`.` };
-    }
-
-    if (sub === "deny-user") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage tag users." };
-      }
-
-      const name = sanitizeTagName(options.name as string);
-      const targetUserId = options.user as string;
-
-      let error: string | null = null;
-      await kv.update<TagStore>(kvKey(guildId), (current) => {
-        const tags = current ?? {};
-        if (!tags[name]) {
-          error = `Tag \`${name}\` not found.`;
-          return tags;
-        }
-        tags[name].allowedUsers = tags[name].allowedUsers ?? [];
-        if (!tags[name].allowedUsers!.includes(targetUserId)) {
-          error = `User <@${targetUserId}> doesn't have view permission for \`${name}\`.`;
-          return tags;
-        }
-        tags[name].allowedUsers = tags[name].allowedUsers!.filter((u) => u !== targetUserId);
-        return tags;
-      });
-      invalidateTagCache(guildId);
-
-      if (error) return { success: false, error };
-      return { success: true, message: `User <@${targetUserId}> can no longer view tag \`${name}\`.` };
     }
 
     if (sub === "list") {
@@ -512,16 +392,7 @@ export default defineCommand({
       }
 
       const lines = names.map((n) => {
-        const tag = tags[n];
-        const parts: string[] = [];
-        if (tag.allowedRoles?.length) {
-          parts.push(`roles: ${tag.allowedRoles.map((r) => `<@&${r}>`).join(", ")}`);
-        }
-        if (tag.allowedUsers?.length) {
-          parts.push(`users: ${tag.allowedUsers.map((u) => `<@${u}>`).join(", ")}`);
-        }
-        const permInfo = parts.length ? ` (${parts.join("; ")})` : "";
-        return `\`${n}\`${permInfo}`;
+        return `\`${n}\`${formatPermissionInfo(tags[n])}`;
       });
 
       return {

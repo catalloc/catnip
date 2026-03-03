@@ -16,6 +16,7 @@ import { blob } from "../../persistence/blob.ts";
 import { kv } from "../../persistence/kv.ts";
 import { createAutocompleteResponse } from "../patterns.ts";
 import { isValidPublicUrl } from "../../helpers/url.ts";
+import { ExpiringCache } from "../../helpers/cache.ts";
 import type { TemplateEntry } from "./template.ts";
 
 interface TagEntry {
@@ -82,8 +83,6 @@ function isValidBackupData(data: unknown): data is BackupData {
 }
 
 const MAX_BACKUPS = 5;
-const AUTOCOMPLETE_CACHE_TTL_MS = 30_000;
-const MAX_CACHE_ENTRIES = 500;
 
 function blobKey(guildId: string, id: string): string {
   return `backup:${guildId}:${id}`;
@@ -111,20 +110,7 @@ async function listBackups(guildId: string): Promise<BackupListItem[]> {
   return items;
 }
 
-const listCache = new Map<string, { items: BackupListItem[]; expiresAt: number }>();
-
-async function listBackupsCached(guildId: string): Promise<BackupListItem[]> {
-  const cacheKey = blobPrefix(guildId);
-  const cached = listCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) return cached.items;
-  const items = await listBackups(guildId);
-  if (listCache.size >= MAX_CACHE_ENTRIES) {
-    const oldest = listCache.keys().next().value;
-    if (oldest !== undefined) listCache.delete(oldest);
-  }
-  listCache.set(cacheKey, { items, expiresAt: Date.now() + AUTOCOMPLETE_CACHE_TTL_MS });
-  return items;
-}
+const listCache = new ExpiringCache<string, BackupListItem[]>(30_000, 500);
 
 function invalidateCache(guildId: string): void {
   listCache.delete(blobPrefix(guildId));
@@ -193,7 +179,7 @@ export default defineCommand({
     const query = (focused?.value as string || "").toLowerCase();
 
     return (async () => {
-      const items = await listBackupsCached(guildId);
+      const items = await listCache.getOrFetch(blobPrefix(guildId), () => listBackups(guildId));
       const filtered = query ? items.filter((i) => i.id.includes(query)) : items;
       return createAutocompleteResponse(
         filtered.map((i) => {

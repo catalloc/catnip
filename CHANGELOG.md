@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 — Extract Reusable Patterns
+
+### Refactoring
+- Extract `ExpiringCache` class (`discord/helpers/cache.ts`) — replaces 6 identical cache implementations across paste, template, tag, stash, backup, and schedule commands
+- Extract permission helpers (`discord/helpers/permissions.ts`) — `checkEntityAccess()` replaces `canGet`/`canSend`/`canView`, blob/KV CRUD helpers replace 12 duplicated allow/deny handlers
+- Extract format helpers (`discord/helpers/format.ts`) — `formatPermissionInfo()` and `discordTimestamp()` replace duplicated formatting blocks
+- Extract cron helpers (`discord/helpers/cron.ts`) — `runCron()` wraps common cron lifecycle, `deliverWithRetry()` wraps claim-delete + retry pattern
+- Refactor paste, template, tag, stash, backup, schedule commands to use shared helpers
+- Refactor reminders, scheduled-messages, giveaways, polls, tickets cron jobs to use shared helpers
+- Add 45 new tests for helper modules; all 672 tests pass
+
 ## 1.0.0 — Initial Public Release
 
 ### Features

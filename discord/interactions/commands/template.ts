@@ -23,6 +23,9 @@ import { EmbedColors, isGuildAdmin } from "../../constants.ts";
 import { blob } from "../../persistence/blob.ts";
 import { discordBotFetch } from "../../discord-api.ts";
 import { createAutocompleteResponse } from "../patterns.ts";
+import { ExpiringCache } from "../../helpers/cache.ts";
+import { checkEntityAccess, blobAllow, blobDeny } from "../../helpers/permissions.ts";
+import { formatPermissionInfo } from "../../helpers/format.ts";
 
 export interface TemplateEntry {
   title: string;
@@ -40,8 +43,6 @@ export interface TemplateEntry {
 
 const MAX_TEMPLATES = 25;
 const MAX_NAME_LENGTH = 32;
-const AUTOCOMPLETE_CACHE_TTL_MS = 30_000;
-const MAX_CACHE_ENTRIES = 500;
 
 function blobKey(guildId: string, name: string): string {
   return `template:${guildId}:${name}`;
@@ -73,26 +74,13 @@ async function listTemplates(guildId: string): Promise<TemplateListItem[]> {
   return items;
 }
 
-const listCache = new Map<string, { items: TemplateListItem[]; expiresAt: number }>();
-
-async function listTemplatesCached(guildId: string): Promise<TemplateListItem[]> {
-  const cacheKey = blobPrefix(guildId);
-  const cached = listCache.get(cacheKey);
-  if (cached && Date.now() < cached.expiresAt) return cached.items;
-  const items = await listTemplates(guildId);
-  if (listCache.size >= MAX_CACHE_ENTRIES) {
-    const oldest = listCache.keys().next().value;
-    if (oldest !== undefined) listCache.delete(oldest);
-  }
-  listCache.set(cacheKey, { items, expiresAt: Date.now() + AUTOCOMPLETE_CACHE_TTL_MS });
-  return items;
-}
+const listCache = new ExpiringCache<string, TemplateListItem[]>(30_000, 500);
 
 function invalidateCache(guildId: string): void {
   listCache.delete(blobPrefix(guildId));
 }
 
-/** Check if user has permission to send a template. */
+/** Check if user has permission to send a template. Closed by default (admin-only when no restrictions). */
 async function canSend(
   entry: TemplateEntry,
   guildId: string,
@@ -100,10 +88,7 @@ async function canSend(
   memberRoles: string[],
   memberPermissions?: string,
 ): Promise<boolean> {
-  if (await isGuildAdmin(guildId, userId, memberRoles, memberPermissions)) return true;
-  if (entry.allowedUsers?.includes(userId)) return true;
-  if (!entry.allowedRoles || entry.allowedRoles.length === 0) return false;
-  return memberRoles.some((r) => entry.allowedRoles!.includes(r));
+  return checkEntityAccess(entry, guildId, userId, memberRoles, memberPermissions, { defaultOpen: false });
 }
 
 export const _internals = { sanitizeName, blobKey, blobPrefix, canSend };
@@ -354,7 +339,7 @@ export default defineCommand({
     const query = (focused?.value as string || "").toLowerCase();
 
     return (async () => {
-      const items = await listTemplatesCached(guildId);
+      const items = await listCache.getOrFetch(blobPrefix(guildId), () => listTemplates(guildId));
       const filtered = query ? items.filter((i) => i.name.includes(query)) : items;
       return createAutocompleteResponse(
         filtered.map((i) => ({ name: i.name, value: i.name })),
@@ -473,108 +458,24 @@ export default defineCommand({
       return { success: true, message: `Field \`${fieldName}\` removed from template \`${name}\`.` };
     }
 
-    if (sub === "allow-role") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage template roles." };
-      }
-
+    if (sub === "allow-role" || sub === "deny-role" || sub === "allow-user" || sub === "deny-user") {
       const name = sanitizeName(options.name as string);
-      const roleId = options.role as string;
+      const isRole = sub.endsWith("-role");
+      const isAllow = sub.startsWith("allow");
+      const targetId = isRole ? (options.role as string) : (options.user as string);
+      const handler = isAllow ? blobAllow : blobDeny;
 
-      const entry = await blob.getJSON<TemplateEntry>(blobKey(guildId, name));
-      if (!entry) {
-        return { success: false, error: `Template \`${name}\` not found.` };
-      }
-
-      entry.allowedRoles = entry.allowedRoles ?? [];
-      if (entry.allowedRoles.includes(roleId)) {
-        return { success: false, error: `Role <@&${roleId}> already has send permission for \`${name}\`.` };
-      }
-
-      entry.allowedRoles.push(roleId);
-      entry.updatedAt = new Date().toISOString();
-      await blob.setJSON(blobKey(guildId, name), entry);
-      invalidateCache(guildId);
-
-      return { success: true, message: `Role <@&${roleId}> can now send template \`${name}\`.` };
-    }
-
-    if (sub === "deny-role") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage template roles." };
-      }
-
-      const name = sanitizeName(options.name as string);
-      const roleId = options.role as string;
-
-      const entry = await blob.getJSON<TemplateEntry>(blobKey(guildId, name));
-      if (!entry) {
-        return { success: false, error: `Template \`${name}\` not found.` };
-      }
-
-      entry.allowedRoles = entry.allowedRoles ?? [];
-      if (!entry.allowedRoles.includes(roleId)) {
-        return { success: false, error: `Role <@&${roleId}> doesn't have send permission for \`${name}\`.` };
-      }
-
-      entry.allowedRoles = entry.allowedRoles.filter((r) => r !== roleId);
-      entry.updatedAt = new Date().toISOString();
-      await blob.setJSON(blobKey(guildId, name), entry);
-      invalidateCache(guildId);
-
-      return { success: true, message: `Role <@&${roleId}> can no longer send template \`${name}\`.` };
-    }
-
-    if (sub === "allow-user") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage template users." };
-      }
-
-      const name = sanitizeName(options.name as string);
-      const targetUserId = options.user as string;
-
-      const entry = await blob.getJSON<TemplateEntry>(blobKey(guildId, name));
-      if (!entry) {
-        return { success: false, error: `Template \`${name}\` not found.` };
-      }
-
-      entry.allowedUsers = entry.allowedUsers ?? [];
-      if (entry.allowedUsers.includes(targetUserId)) {
-        return { success: false, error: `User <@${targetUserId}> already has send permission for \`${name}\`.` };
-      }
-
-      entry.allowedUsers.push(targetUserId);
-      entry.updatedAt = new Date().toISOString();
-      await blob.setJSON(blobKey(guildId, name), entry);
-      invalidateCache(guildId);
-
-      return { success: true, message: `User <@${targetUserId}> can now send template \`${name}\`.` };
-    }
-
-    if (sub === "deny-user") {
-      if (!(await isGuildAdmin(guildId, userId, roles, memberPermissions))) {
-        return { success: false, error: "You need admin permissions to manage template users." };
-      }
-
-      const name = sanitizeName(options.name as string);
-      const targetUserId = options.user as string;
-
-      const entry = await blob.getJSON<TemplateEntry>(blobKey(guildId, name));
-      if (!entry) {
-        return { success: false, error: `Template \`${name}\` not found.` };
-      }
-
-      entry.allowedUsers = entry.allowedUsers ?? [];
-      if (!entry.allowedUsers.includes(targetUserId)) {
-        return { success: false, error: `User <@${targetUserId}> doesn't have send permission for \`${name}\`.` };
-      }
-
-      entry.allowedUsers = entry.allowedUsers.filter((u) => u !== targetUserId);
-      entry.updatedAt = new Date().toISOString();
-      await blob.setJSON(blobKey(guildId, name), entry);
-      invalidateCache(guildId);
-
-      return { success: true, message: `User <@${targetUserId}> can no longer send template \`${name}\`.` };
+      return handler({
+        guildId, userId, memberRoles: roles, memberPermissions,
+        entityName: name, entityLabel: "template", verb: "send",
+        targetId, targetType: isRole ? "role" : "user",
+        getEntry: () => blob.getJSON<TemplateEntry>(blobKey(guildId, name)),
+        saveEntry: async (e) => {
+          (e as TemplateEntry).updatedAt = new Date().toISOString();
+          await blob.setJSON(blobKey(guildId, name), e);
+        },
+        invalidateCache: () => invalidateCache(guildId),
+      });
     }
 
     if (sub === "preview") {
@@ -624,15 +525,7 @@ export default defineCommand({
       }
 
       const lines = items.map((i) => {
-        const parts: string[] = [];
-        if (i.entry.allowedRoles?.length) {
-          parts.push(`roles: ${i.entry.allowedRoles.map((r) => `<@&${r}>`).join(", ")}`);
-        }
-        if (i.entry.allowedUsers?.length) {
-          parts.push(`users: ${i.entry.allowedUsers.map((u) => `<@${u}>`).join(", ")}`);
-        }
-        const permInfo = parts.length ? ` (${parts.join("; ")})` : " (admin-only)";
-        return `\`${i.name}\` — ${i.entry.title}${permInfo}`;
+        return `\`${i.name}\` — ${i.entry.title}${formatPermissionInfo(i.entry, "admin-only")}`;
       });
 
       return {

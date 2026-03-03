@@ -7,22 +7,21 @@
 
 import { kv } from "../discord/persistence/kv.ts";
 import { type GiveawayConfig, endGiveaway, announceGiveaway, MAX_ANNOUNCE_RETRIES } from "../discord/interactions/commands/giveaway.ts";
-import { createLogger, finalizeAllLoggers } from "../discord/webhook/logger.ts";
 import { withTimeout } from "../discord/helpers/timeout.ts";
+import { runCron } from "../discord/helpers/cron.ts";
 
-const logger = createLogger("GiveawayCron");
-
-const MAX_DUE_PER_RUN = 100;
 const ITEM_TIMEOUT_MS = 30_000;
 const ANNOUNCE_RETRY_DELAY_MS = 15 * 60 * 1000;
 const CLEANUP_DELAY_MS = 24 * 60 * 60 * 1000;
 
 export default async function () {
-  try {
-    const entries = await kv.listDue(Date.now(), "giveaway:", MAX_DUE_PER_RUN);
-    let ended = 0, cleaned = 0, retried = 0, failed = 0;
+  let ended = 0, cleaned = 0, retried = 0, failed = 0;
 
-    await Promise.allSettled(entries.map(async (entry) => {
+  await runCron({
+    name: "GiveawayCron",
+    prefix: "giveaway:",
+    maxDue: 100,
+    async process(entry, logger) {
       const config = entry.value as GiveawayConfig;
       if (!config?.channelId || !config?.messageId) {
         logger.warn(`Skipping malformed giveaway: ${entry.key}`);
@@ -32,7 +31,6 @@ export default async function () {
       // Ended giveaways — retry announcement or clean up
       if (config.ended) {
         if (config.announceFailed) {
-          // Retry the announcement
           const guildId = entry.key.slice("giveaway:".length);
           const retries = (config.announceRetries ?? 0) + 1;
           try {
@@ -84,14 +82,6 @@ export default async function () {
           logger.error(`Failed to end giveaway ${entry.key}:`, err);
         }
       }
-    }));
-
-    if (entries.length > 0) {
-      logger.info(`Run complete: ${entries.length} item(s) — ${ended} ended, ${cleaned} cleaned, ${retried} retried, ${failed} failed`);
-    }
-  } catch (err) {
-    logger.error("Cron run failed:", err);
-  } finally {
-    await finalizeAllLoggers();
-  }
+    },
+  });
 }
