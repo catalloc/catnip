@@ -23,6 +23,12 @@ export default defineCommand({
       type: OptionTypes.STRING,
       required: true,
     },
+    {
+      name: "secret",
+      description: "Only you can see the result",
+      type: OptionTypes.BOOLEAN,
+      required: false,
+    },
   ],
 
   registration: { type: "guild" },
@@ -31,6 +37,7 @@ export default defineCommand({
   ephemeral: false,
 
   async execute({ options }) {
+    const secret = options.secret === true;
     const input = (options.dice as string).trim();
     const match = input.match(DICE_PATTERN);
 
@@ -67,6 +74,8 @@ export default defineCommand({
       message = `\u{1F3B2} **${notation}**\nRolls: \`[${rolls.join(", ")}]\`\nTotal: **${total}** (${sum} ${modifier > 0 ? "+" : "\u2212"} ${Math.abs(modifier)})`;
     }
 
-    return { success: true, message };
+    if (secret) message = `\u{1F510} **Secret Roll**\n${message}`;
+
+    return { success: true, message, ephemeral: secret };
   },
 });

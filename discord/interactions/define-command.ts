@@ -44,6 +44,8 @@ export interface CommandResult {
   components?: any[];
   /** Open a modal dialog (only valid for non-deferred commands) */
   modal?: { title: string; custom_id: string; components: any[] };
+  /** Override the command-level ephemeral setting for this specific result */
+  ephemeral?: boolean;
 }
 
 /**

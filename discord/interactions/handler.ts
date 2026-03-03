@@ -258,9 +258,10 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
       }
 
       const message = formatResultMessage(result);
+      const isEphemeral = result.ephemeral ?? (command.ephemeral !== false);
       return Response.json({
         type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-        data: buildPayload(message, result, command.ephemeral !== false),
+        data: buildPayload(message, result, isEphemeral),
       });
     } catch (error) {
       logger.error(`${logCtx} Error executing fast command:`, error);
