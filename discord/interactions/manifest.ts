@@ -10,6 +10,7 @@
 
 // Commands
 export { default as about } from "./commands/about.ts";
+export { default as backup } from "./commands/backup.ts";
 export { default as coinFlip } from "./commands/coin-flip.ts";
 export { default as colorPicker } from "./commands/color-picker.ts";
 export { default as commands } from "./commands/commands.ts";
@@ -20,6 +21,7 @@ export { default as feedback } from "./commands/feedback.ts";
 export { default as giveaway } from "./commands/giveaway.ts";
 export { default as help } from "./commands/help.ts";
 export { default as livestream } from "./commands/livestream.ts";
+export { default as paste } from "./commands/paste.ts";
 export { default as pick } from "./commands/pick.ts";
 export { default as ping } from "./commands/ping.ts";
 export { default as poll } from "./commands/poll.ts";
@@ -29,7 +31,9 @@ export { default as remind } from "./commands/remind.ts";
 export { default as schedule } from "./commands/schedule.ts";
 export { default as server } from "./commands/server.ts";
 export { default as slowEcho } from "./commands/slow-echo.ts";
+export { default as stash } from "./commands/stash.ts";
 export { default as tag } from "./commands/tag.ts";
+export { default as template } from "./commands/template.ts";
 export { default as ticket } from "./commands/ticket.ts";
 export { default as userInfo } from "./commands/user-info.ts";
 
@@ -45,4 +49,5 @@ export { default as rollReveal } from "./components/roll-reveal.ts";
 export { default as ticketModal } from "./components/ticket-modal.ts";
 export { default as ticketJoin } from "./components/ticket-join.ts";
 export { default as ticketClose } from "./components/ticket-close.ts";
+export { default as templateModal } from "./components/template-modal.ts";
 export { default as ticketCloseModal } from "./components/ticket-close-modal.ts";

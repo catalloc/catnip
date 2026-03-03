@@ -1,8 +1,8 @@
 # Catnip
 
 Open source Discord bot built for [Val Town](https://val.town). Ships with slash
-commands, component interactions, webhook logging, linked roles, and a KV
-persistence layer — all running on Val Town's serverless Deno isolates.
+commands, component interactions, webhook logging, linked roles, KV and blob
+persistence layers — all running on Val Town's serverless Deno isolates.
 
 ## Table of Contents
 
@@ -31,6 +31,7 @@ persistence layer — all running on Val Town's serverless Deno isolates.
 - [Component Handlers](#component-handlers)
 - [Cron Jobs](#cron-jobs)
 - [KV Store](#kv-store)
+- [Blob Storage](#blob-storage)
 - [Guild Configuration](#guild-configuration)
 - [Admin System](#admin-system)
 - [Linked Roles](#linked-roles)
@@ -65,6 +66,11 @@ persistence layer — all running on Val Town's serverless Deno isolates.
   join requests, and auto-expiry via cron
 - **React-roles** — Self-assignable role panels with button toggling
 - **Tags** — Per-guild text snippets with admin management
+- **Templates** — Reusable embed builder with role-based send permissions and
+  modal editing
+- **Paste** — Server pastebin with short codes and public/private retrieval
+- **Stash** — Personal cross-server clipboard for text snippets
+- **Backup** — Guild data export/import for tags, templates, and counters
 - **Dice roller** — Standard TTRPG notation (`2d20+5`) with secret rolls,
   announce, and reveal
 - **Linked roles** — Discord OAuth2 verification with pluggable verifiers
@@ -75,6 +81,8 @@ persistence layer — all running on Val Town's serverless Deno isolates.
   fallback support
 - **KV persistence** — SQLite-backed key-value store with atomic operations,
   optimistic concurrency, and time-based queries
+- **Blob persistence** — Cloudflare R2-backed blob storage for larger data
+  (pastes, templates, backups, stash)
 - **Production hardened** — Retry logic, rate-limit respect, timing-safe
   comparisons, exactly-once delivery, panel update throttling
 - **Legal pages** — Built-in Terms of Service and Privacy Policy
@@ -409,6 +417,17 @@ These must be enabled per-server via `/server commands enable`.
 
 Bot info embed with command count and runtime details.
 
+#### `/backup` (admin-only)
+
+Guild data export and import.
+
+- `export` — Snapshot tags, templates, and counter to blob storage
+- `import <id>` — Restore from a backup (overwrites current data)
+- `list` — Show available backups with timestamps, creator, and contents
+- `delete <id>` — Remove a backup
+
+Max 5 backups per guild. Autocomplete on backup IDs.
+
 #### `/coin-flip`
 
 Flip a coin using cryptographically secure randomness.
@@ -443,6 +462,18 @@ One active giveaway per guild.
 
 Auto-ended by the `giveaways.cron.ts` job. Max 10,000 entrants. Panel updates
 throttled to 5-second intervals.
+
+#### `/paste`
+
+Server pastebin using blob storage.
+
+- `create <content>` — Store text (max 6000 chars), get an 8-char hex code
+- `get <code> [public]` — Retrieve a paste (ephemeral by default, `public: true`
+  to show the channel)
+- `list` — Show all pastes with code and content preview
+- `delete <code>` — Remove a paste (creator or admin)
+
+Max 50 pastes per guild. Autocomplete on paste codes.
 
 #### `/pick <choices>`
 
@@ -510,6 +541,18 @@ Max 25 per guild. Delivered by `scheduled-messages.cron.ts`.
 Deferred command demo. Waits 1–10 seconds (default 3) then echoes. 10-second
 cooldown.
 
+#### `/stash`
+
+Personal clipboard — snippets persist across all servers.
+
+- `save <name> <content>` — Save or overwrite a named snippet (max 4000 chars)
+- `get <name>` — Recall a snippet
+- `list` — Show all entries with previews
+- `delete <name>` — Remove a snippet
+
+Max 25 entries per user. Names sanitized to lowercase alphanumeric + hyphens (max
+32 chars). Always ephemeral. Autocomplete on names.
+
 #### `/ticket`
 
 Private support ticket channels. Requires **Manage Channels** permission.
@@ -535,6 +578,32 @@ Per-guild text snippets. Anyone can view; admins manage.
 - `remove <name>` — Delete a tag (admin-only)
 - `list` — Show all tag names
 
+#### `/template`
+
+Reusable embed builder with role-based send permissions. Lets authorized users
+post rich embeds — something normally impossible without a bot or webhook.
+
+- `create <name>` — Open a modal to build an embed (admin)
+- `edit <name>` — Open a pre-filled modal to modify an embed (admin)
+- `add-field <name> <field-name> <field-value> [inline]` — Add a field (admin)
+- `remove-field <name> <field-name>` — Remove a field (admin)
+- `allow-role <name> <role>` — Grant a role permission to send (admin)
+- `deny-role <name> <role>` — Revoke a role's send permission (admin)
+- `preview <name>` — Preview the embed privately (anyone)
+- `send <name> [channel]` — Post the embed (role-gated, see below)
+- `list` — Show all templates with role info (anyone)
+- `delete <name>` — Remove a template (admin)
+
+**Role-based send access:** Each template has an `allowedRoles` list. If empty,
+only admins can send. If roles are listed, users with at least one matching role
+(or admins) can send. Non-admins always post to the current channel; admins can
+specify a different channel.
+
+**Modal fields:** Title (required), Description (required), Color (hex, e.g.
+`#5865f2`), Footer, Image URL.
+
+Max 25 templates per guild, up to 25 fields per embed. Autocomplete on names.
+
 #### `/user-info` (context menu)
 
 Right-click a user to see their display name, username, ID, account creation
@@ -559,6 +628,7 @@ Located in `discord/interactions/components/`. Auto-discovered and matched by
 | `poll-vote.ts`      | `poll-vote:`      | prefix | button | Poll voting (toggle/switch, 10k cap)   |
 | `react-role.ts`     | `react-role:`     | prefix | button | Role toggle via Discord API            |
 | `roll-reveal.ts`    | `roll-reveal:`    | prefix | button | Reveal a secret dice roll publicly     |
+| `template-modal.ts` | `template-modal:` | prefix | modal  | Template create/edit modal submission   |
 | `ticket-modal.ts`   | `ticket-modal:`   | prefix | modal  | Ticket creation (channel + staff panel) |
 | `ticket-join.ts`    | `ticket-join:`    | prefix | button | Staff joins ticket channel              |
 | `ticket-close.ts`   | `ticket-close:`   | prefix | button | Opens close-reason modal                |
@@ -646,6 +716,33 @@ const all = await kv.list("user:");
 | `reminder:{userId}:{guildId}:{ts}-{rnd}` | Individual reminder with `due_at`          |
 | `scheduled-msg:{guildId}:{ts}-{rnd}`     | Individual scheduled message with `due_at` |
 | `tags:{guildId}`                         | All tags for a guild                       |
+| `ticket:{guildId}:{channelId}`           | Ticket state                               |
+
+## Blob Storage
+
+`discord/persistence/blob.ts` — Re-exports Val Town's blob storage (Cloudflare
+R2-backed). Better suited for larger, opaque data that doesn't need indexed
+queries.
+
+### Usage
+
+```typescript
+import { blob } from "../../persistence/blob.ts";
+
+await blob.setJSON("paste:g1:abc123", { content: "hello" });
+const data = await blob.getJSON<PasteEntry>("paste:g1:abc123");
+await blob.delete("paste:g1:abc123");
+const items = await blob.list("paste:g1:");
+```
+
+### Key Namespaces
+
+| Prefix                          | Description                          |
+| ------------------------------- | ------------------------------------ |
+| `backup:{guildId}:{id}`        | Guild data backup snapshots          |
+| `paste:{guildId}:{code}`       | Server pastebin entries              |
+| `stash:{userId}:{name}`        | Personal clipboard snippets          |
+| `template:{guildId}:{name}`    | Reusable embed templates             |
 
 ## Guild Configuration
 
@@ -1053,7 +1150,7 @@ export default defineComponent({
 
 ## Testing
 
-Catnip has a comprehensive test suite — **46 test files** with **408 tests** and
+Catnip has a comprehensive test suite — **51 test files** with **482 tests** and
 a **100% pass rate**. Tests run on Deno's built-in test runner with no external
 test dependencies.
 
@@ -1067,8 +1164,8 @@ deno test --allow-env --allow-net --no-check
 |---|---|---|---|
 | **Core infrastructure** | 6 | 61 | Config loading, API retry logic, crypto helpers, duration parsing, embed builder, timeouts |
 | **Interaction framework** | 7 | 55 | Handler dispatch, auto-discovery, command factory, component factory, error handling, patterns, registration |
-| **Commands** | 10 | 86 | facts, giveaway, poll, r, remind, schedule, server, tag, ticket |
-| **Components** | 8 | 52 | giveaway-enter, poll-vote, react-role, roll-reveal, ticket-close, ticket-close-modal, ticket-join, ticket-modal |
+| **Commands** | 14 | 152 | backup, facts, giveaway, paste, poll, r, remind, schedule, server, stash, tag, template, ticket |
+| **Components** | 9 | 60 | giveaway-enter, poll-vote, react-role, roll-reveal, template-modal, ticket-close, ticket-close-modal, ticket-join, ticket-modal |
 | **Persistence** | 2 | 43 | KV store CRUD, atomic operations, optimistic concurrency, time-based queries, guild config |
 | **Linked roles** | 5 | 34 | OAuth2 flow, verifier factory, Patreon webhook, routes, CSRF state tokens |
 | **Webhooks** | 2 | 36 | Batched logger (flush, levels, truncation), message sending (chunking, embeds, rate limits) |
@@ -1081,6 +1178,8 @@ deno test --allow-env --allow-net --no-check
 All external dependencies are mocked so tests run offline and in isolation:
 
 - **`test/_mocks/sqlite.ts`** — In-memory SQLite mock with full query support
+- **`test/_mocks/blob.ts`** — In-memory blob storage mock (getJSON, setJSON,
+  delete, list, copy, move)
 - **`test/_mocks/fetch.ts`** — Configurable HTTP fetch mock for Discord API calls
 - **`test/_mocks/env.ts`** — Environment variable mock for config testing
 - **`test/_mocks/sign.ts`** — Ed25519 request signing for interaction tests
@@ -1112,6 +1211,7 @@ All external dependencies are mocked so tests run offline and in isolation:
 │   │       ├── patreon.ts        # Patreon patron verifier
 │   │       └── steam.ts          # Steam profile verifier
 │   ├── persistence/
+│   │   ├── blob.ts               # Blob storage (Val Town / Cloudflare R2)
 │   │   ├── guild-config.ts       # Per-guild config (admin roles, commands)
 │   │   └── kv.ts                 # Key-value store (Val Town SQLite)
 │   ├── interactions/
@@ -1126,6 +1226,7 @@ All external dependencies are mocked so tests run offline and in isolation:
 │   │   ├── registry.ts           # Command & component registry (KV-backed)
 │   │   ├── commands/
 │   │   │   ├── about.ts          # Bot info
+│   │   │   ├── backup.ts         # Guild data export/import
 │   │   │   ├── coin-flip.ts      # Coin flip
 │   │   │   ├── color-picker.ts   # Select menu demo
 │   │   │   ├── commands.ts       # Admin: manage registration
@@ -1135,6 +1236,7 @@ All external dependencies are mocked so tests run offline and in isolation:
 │   │   │   ├── feedback.ts       # Modal demo
 │   │   │   ├── giveaway.ts       # Giveaway system
 │   │   │   ├── help.ts           # List commands
+│   │   │   ├── paste.ts          # Server pastebin
 │   │   │   ├── pick.ts           # Random picker
 │   │   │   ├── ping.ts           # Health check
 │   │   │   ├── poll.ts           # Poll system
@@ -1144,7 +1246,9 @@ All external dependencies are mocked so tests run offline and in isolation:
 │   │   │   ├── schedule.ts       # Scheduled messages
 │   │   │   ├── server.ts         # Guild configuration
 │   │   │   ├── slow-echo.ts      # Deferred command demo
+│   │   │   ├── stash.ts          # Personal clipboard
 │   │   │   ├── tag.ts            # Custom text tags
+│   │   │   ├── template.ts       # Embed builder & poster
 │   │   │   ├── ticket.ts         # Ticket system
 │   │   │   └── user-info.ts      # User context menu
 │   │   └── components/
@@ -1155,7 +1259,8 @@ All external dependencies are mocked so tests run offline and in isolation:
 │   │       ├── giveaway-enter.ts # Giveaway entry handler
 │   │       ├── poll-vote.ts      # Poll vote handler
 │   │       ├── react-role.ts     # Role toggle handler
-│   │       ├── roll-reveal.ts   # Dice roll reveal handler
+│   │       ├── roll-reveal.ts    # Dice roll reveal handler
+│   │       ├── template-modal.ts # Template create/edit modal handler
 │   │       ├── ticket-close.ts   # Ticket close handler
 │   │       ├── ticket-close-modal.ts # Close reason modal handler
 │   │       ├── ticket-join.ts    # Ticket join handler

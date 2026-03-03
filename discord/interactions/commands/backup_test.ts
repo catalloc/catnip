@@ -1,0 +1,265 @@
+import "../../../test/_mocks/env.ts";
+import { assertEquals, assert } from "@std/assert";
+import { blob } from "../../../test/_mocks/blob.ts";
+import { sqlite } from "../../../test/_mocks/sqlite.ts";
+import { kv } from "../../persistence/kv.ts";
+import { _internals } from "./backup.ts";
+
+function resetStore() {
+  (blob as any)._reset();
+  (sqlite as any)._reset();
+}
+
+const ADMIN_PERMISSIONS = "8";
+
+Deno.test("backup _internals.blobKey: correct format", () => {
+  assertEquals(_internals.blobKey("g1", "abc"), "backup:g1:abc");
+});
+
+Deno.test("backup _internals.blobPrefix: correct format", () => {
+  assertEquals(_internals.blobPrefix("g1"), "backup:g1:");
+});
+
+Deno.test("backup export: creates a backup with tags", async () => {
+  resetStore();
+  await kv.set("tags:g1", {
+    hello: { content: "world", createdBy: "u1", createdAt: "2024-01-01" },
+    foo: { content: "bar", createdBy: "u1", createdAt: "2024-01-01" },
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "export" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("2 tags"));
+
+  const items = await blob.list("backup:g1:");
+  assertEquals(items.length, 1);
+});
+
+Deno.test("backup export: creates a backup with templates", async () => {
+  resetStore();
+  await blob.setJSON("template:g1:welcome", {
+    title: "Welcome",
+    description: "Hello!",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    updatedAt: "2024-01-01",
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "export" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("1 templates"));
+});
+
+Deno.test("backup export: enforces max backups", async () => {
+  resetStore();
+  for (let i = 0; i < 5; i++) {
+    await blob.setJSON(`backup:g1:id${i}`, {
+      version: 1,
+      guildId: "g1",
+      createdBy: "u1",
+      createdAt: "2024-01-01",
+      data: {},
+    });
+  }
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "export" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("Maximum"));
+});
+
+Deno.test("backup import: restores tags and counter", async () => {
+  resetStore();
+  const tags = {
+    hello: { content: "world", createdBy: "u1", createdAt: "2024-01-01" },
+  };
+  await blob.setJSON("backup:g1:backup1", {
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: { tags, counter: 42 },
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "import", id: "backup1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("1 tags"));
+  assert(result.embed?.description?.includes("counter"));
+
+  const restoredTags = await kv.get<Record<string, any>>("tags:g1");
+  assertEquals(restoredTags?.hello?.content, "world");
+  const counter = await kv.get<number>("counter:g1");
+  assertEquals(counter, 42);
+});
+
+Deno.test("backup import: restores templates", async () => {
+  resetStore();
+  const templates = {
+    welcome: {
+      title: "Welcome",
+      description: "Hello!",
+      createdBy: "u1",
+      createdAt: "2024-01-01",
+      updatedAt: "2024-01-01",
+    },
+  };
+  await blob.setJSON("backup:g1:backup1", {
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: { templates },
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "import", id: "backup1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+
+  const template = await blob.getJSON<any>("template:g1:welcome");
+  assertEquals(template?.title, "Welcome");
+});
+
+Deno.test("backup import: not found", async () => {
+  resetStore();
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "import", id: "nope" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+Deno.test("backup import: wrong guild rejected", async () => {
+  resetStore();
+  await blob.setJSON("backup:g1:backup1", {
+    version: 1,
+    guildId: "g2",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {},
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "import", id: "backup1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("different guild"));
+});
+
+Deno.test("backup list: shows backups", async () => {
+  resetStore();
+  await blob.setJSON("backup:g1:id1", {
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-06-15T10:00:00.000Z",
+    data: { tags: { hello: { content: "world", createdBy: "u1", createdAt: "2024-01-01" } } },
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "list" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("id1"));
+  assert(result.embed?.description?.includes("1 tags"));
+});
+
+Deno.test("backup list: empty", async () => {
+  resetStore();
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "list" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.message?.includes("No backups"));
+});
+
+Deno.test("backup delete: removes backup", async () => {
+  resetStore();
+  await blob.setJSON("backup:g1:id1", {
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {},
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "delete", id: "id1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.message?.includes("deleted"));
+
+  const entry = await blob.getJSON("backup:g1:id1");
+  assertEquals(entry, undefined);
+});
+
+Deno.test("backup delete: not found", async () => {
+  resetStore();
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "delete", id: "nope" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});

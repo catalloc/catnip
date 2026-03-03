@@ -3,7 +3,8 @@
   "imports": {
     "@std/assert": "jsr:@std/assert",
     "https://esm.town/v/std/sqlite/main.ts": "./test/_mocks/sqlite.ts",
-    "https://esm.town/v/std/utils@85-main/index.ts": "./test/_mocks/val-utils.ts"
+    "https://esm.town/v/std/utils@85-main/index.ts": "./test/_mocks/val-utils.ts",
+    "https://esm.town/v/std/blob": "./test/_mocks/blob.ts"
   },
   "lock": false,
   "compilerOptions": {

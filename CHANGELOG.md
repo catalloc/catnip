@@ -14,19 +14,24 @@
 - Ticket system — thread-based support tickets with close reasons, join requests, modal creation, and auto-expiry via cron
 - React-roles — self-assignable role panels with button toggling
 - Tags — per-guild text snippets with admin management
+- Templates — reusable embed builder with modal editing, role-based send permissions, and channel posting
+- Paste — server pastebin with short codes, public/private retrieval, and creator/admin delete
+- Stash — personal cross-server clipboard with named snippets
+- Backup — admin-only guild data export/import for tags, templates, and counters
 - Dice roller — standard TTRPG notation (`2d20+5`) with secret rolls, announce, and reveal
 - Linked roles — Discord OAuth2 verification with pluggable verifiers (Steam, GitHub, Patreon, account age)
 - Webhook logging — batched Discord webhook logger with log levels and auto-flush
 - Webhook sending — message chunking, embed batching, rate-limit handling, fallback support
 - KV persistence — SQLite-backed key-value store with atomic operations, optimistic concurrency, and time-based queries
+- Blob persistence — Cloudflare R2-backed storage for larger data (pastes, templates, backups, stash)
 - Guild allowlist via `ALLOWED_GUILD_IDS`
 - Built-in Terms of Service and Privacy Policy pages
 - Health check endpoint
 
 ### Testing
-- **408 tests** across **46 files** with 100% pass rate
+- **482 tests** across **51 files** with 100% pass rate
 - Full coverage across commands, components, persistence, crons, linked roles, and webhooks
-- Offline test infrastructure with mocks for SQLite, fetch, env, signing, and Val Town utilities
+- Offline test infrastructure with mocks for SQLite, blob storage, fetch, env, signing, and Val Town utilities
 
 ### Security
 - Ed25519 signature verification on all interactions
