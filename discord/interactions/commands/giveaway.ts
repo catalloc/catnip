@@ -296,13 +296,14 @@ export default defineCommand({
         return { success: false, error: "No entrants to reroll from." };
       }
 
-      // Atomic CAS update for reroll
+      // Atomic CAS update for reroll — also clears any pending retry state
       let updated: GiveawayConfig;
       try {
         updated = await kv.update<GiveawayConfig>(giveawayKey(guildId), (current) => {
           if (!current || !current.ended) return current!;
           const newWinners = pickWinners(current.entrants, current.winnersCount);
-          return { ...current, winners: newWinners };
+          const { announceFailed: _, announceRetries: __, ...clean } = current;
+          return { ...clean, winners: newWinners };
         });
       } catch {
         return { success: false, error: "Reroll failed due to a conflict. Please try again." };
@@ -315,6 +316,9 @@ export default defineCommand({
       if (!patchRes.ok) {
         logger.error(`Failed to update reroll panel for ${guildId}: ${patchRes.error}`);
       }
+
+      // Reset due_at to cleanup delay (cancels any pending retry schedule)
+      await kv.set(giveawayKey(guildId), updated, Date.now() + CLEANUP_DELAY_MS);
 
       // Announce new winners
       const winnerText = updated.winners!.map((id) => `<@${id}>`).join(", ");
