@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 — Secret Roll Announce & Reveal
+
+### Features
+- **Announce option** for `/r` — when rolling secretly, optionally post a public notice ("🎲 @user rolled some dice...") so the table knows something happened
+- **Reveal Roll button** — secret rolls now include a button the roller can click to post the result publicly; button disappears after use
+- New `roll-reveal` component handler with owner verification
+
+### Testing
+- Added **18 new tests** across 2 files (`r_test.ts`, `roll-reveal_test.ts`)
+- Test suite now at **408 tests** across **46 files** with 100% pass rate
+
 ## 1.0.0 — Initial Public Release
 
 ### Features
@@ -14,7 +25,7 @@
 - Ticket system — thread-based support tickets with close reasons, join requests, modal creation, and auto-expiry via cron
 - React-roles — self-assignable role panels with button toggling
 - Tags — per-guild text snippets with admin management
-- Dice roller — standard TTRPG notation (`2d20+5`)
+- Dice roller — standard TTRPG notation (`2d20+5`) with secret rolls, announce, and reveal
 - Linked roles — Discord OAuth2 verification with pluggable verifiers (Steam, GitHub, Patreon, account age)
 - Webhook logging — batched Discord webhook logger with log levels and auto-flush
 - Webhook sending — message chunking, embed batching, rate-limit handling, fallback support

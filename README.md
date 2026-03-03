@@ -65,7 +65,8 @@ persistence layer — all running on Val Town's serverless Deno isolates.
   join requests, and auto-expiry via cron
 - **React-roles** — Self-assignable role panels with button toggling
 - **Tags** — Per-guild text snippets with admin management
-- **Dice roller** — Standard TTRPG notation (`2d20+5`)
+- **Dice roller** — Standard TTRPG notation (`2d20+5`) with secret rolls,
+  announce, and reveal
 - **Linked roles** — Discord OAuth2 verification with pluggable verifiers
   (Steam, GitHub, Patreon, account age)
 - **Webhook logging** — Batched Discord webhook logger with log levels and
@@ -460,12 +461,18 @@ Vote behavior: click to vote, click same to remove, click different to switch.
 Max 10,000 voters. Panel updates throttled to 5-second intervals. Auto-ended by
 `polls.cron.ts`.
 
-#### `/r <dice>`
+#### `/r <dice> [secret] [announce]`
 
 Roll dice using TTRPG notation. Supports `XdN`, `XdN+M`, `XdN-M`. 1–20 dice,
 d2–d100. Shows individual rolls and total.
 
-Examples: `/r dice:1d20`, `/r dice:4d6`, `/r dice:2d20+5`
+- **secret** — Roll is ephemeral (only you see it). Includes a **Reveal Roll**
+  button to post the result publicly.
+- **announce** — When rolling secretly, posts a public notice
+  ("🎲 @user rolled some dice...") so the table knows something happened.
+
+Examples: `/r dice:1d20`, `/r dice:4d6`, `/r dice:2d20+5`,
+`/r dice:1d20 secret:True announce:True`
 
 #### `/react-roles` (admin-only)
 
@@ -551,6 +558,7 @@ Located in `discord/interactions/components/`. Auto-discovered and matched by
 | `giveaway-enter.ts` | `giveaway-enter:` | prefix | button | Giveaway entry (atomic dedup, 10k cap) |
 | `poll-vote.ts`      | `poll-vote:`      | prefix | button | Poll voting (toggle/switch, 10k cap)   |
 | `react-role.ts`     | `react-role:`     | prefix | button | Role toggle via Discord API            |
+| `roll-reveal.ts`    | `roll-reveal:`    | prefix | button | Reveal a secret dice roll publicly     |
 | `ticket-modal.ts`   | `ticket-modal:`   | prefix | modal  | Ticket creation (channel + staff panel) |
 | `ticket-join.ts`    | `ticket-join:`    | prefix | button | Staff joins ticket channel              |
 | `ticket-close.ts`   | `ticket-close:`   | prefix | button | Opens close-reason modal                |
@@ -1045,7 +1053,7 @@ export default defineComponent({
 
 ## Testing
 
-Catnip has a comprehensive test suite — **44 test files** with **390 tests** and
+Catnip has a comprehensive test suite — **46 test files** with **408 tests** and
 a **100% pass rate**. Tests run on Deno's built-in test runner with no external
 test dependencies.
 
@@ -1059,8 +1067,8 @@ deno test --allow-env --allow-net --no-check
 |---|---|---|---|
 | **Core infrastructure** | 6 | 61 | Config loading, API retry logic, crypto helpers, duration parsing, embed builder, timeouts |
 | **Interaction framework** | 7 | 55 | Handler dispatch, auto-discovery, command factory, component factory, error handling, patterns, registration |
-| **Commands** | 9 | 75 | facts, giveaway, poll, remind, schedule, server, tag, ticket |
-| **Components** | 7 | 45 | giveaway-enter, poll-vote, react-role, ticket-close, ticket-close-modal, ticket-join, ticket-modal |
+| **Commands** | 10 | 86 | facts, giveaway, poll, r, remind, schedule, server, tag, ticket |
+| **Components** | 8 | 52 | giveaway-enter, poll-vote, react-role, roll-reveal, ticket-close, ticket-close-modal, ticket-join, ticket-modal |
 | **Persistence** | 2 | 43 | KV store CRUD, atomic operations, optimistic concurrency, time-based queries, guild config |
 | **Linked roles** | 5 | 34 | OAuth2 flow, verifier factory, Patreon webhook, routes, CSRF state tokens |
 | **Webhooks** | 2 | 36 | Batched logger (flush, levels, truncation), message sending (chunking, embeds, rate limits) |
@@ -1147,6 +1155,7 @@ All external dependencies are mocked so tests run offline and in isolation:
 │   │       ├── giveaway-enter.ts # Giveaway entry handler
 │   │       ├── poll-vote.ts      # Poll vote handler
 │   │       ├── react-role.ts     # Role toggle handler
+│   │       ├── roll-reveal.ts   # Dice roll reveal handler
 │   │       ├── ticket-close.ts   # Ticket close handler
 │   │       ├── ticket-close-modal.ts # Close reason modal handler
 │   │       ├── ticket-join.ts    # Ticket join handler

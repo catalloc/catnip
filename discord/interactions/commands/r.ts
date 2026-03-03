@@ -6,6 +6,7 @@
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
 import { secureRandomIndex } from "../../helpers/crypto.ts";
+import { discordBotFetch } from "../../discord-api.ts";
 
 const DICE_PATTERN = /^(\d+)d(\d+)([+-]\d+)?$/i;
 const MAX_DICE = 20;
@@ -29,6 +30,12 @@ export default defineCommand({
       type: OptionTypes.BOOLEAN,
       required: false,
     },
+    {
+      name: "announce",
+      description: "Post a public notice that you rolled",
+      type: OptionTypes.BOOLEAN,
+      required: false,
+    },
   ],
 
   registration: { type: "guild" },
@@ -36,8 +43,9 @@ export default defineCommand({
   deferred: false,
   ephemeral: false,
 
-  async execute({ options }) {
+  async execute({ userId, options }) {
     const secret = options.secret === true;
+    const announce = options.announce === true;
     const input = (options.dice as string).trim();
     const match = input.match(DICE_PATTERN);
 
@@ -74,8 +82,35 @@ export default defineCommand({
       message = `\u{1F3B2} **${notation}**\nRolls: \`[${rolls.join(", ")}]\`\nTotal: **${total}** (${sum} ${modifier > 0 ? "+" : "\u2212"} ${Math.abs(modifier)})`;
     }
 
-    if (secret) message = `\u{1F510} **Secret Roll**\n${message}`;
+    if (secret) {
+      message = `\u{1F510} **Secret Roll**\n${message}`;
 
-    return { success: true, message, ephemeral: secret };
+      if (announce) {
+        discordBotFetch("POST", `channels/${options.channelId}/messages`, {
+          content: `\u{1F3B2} <@${userId}> rolled some dice...`,
+        });
+      }
+
+      return {
+        success: true,
+        message,
+        ephemeral: true,
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 2,
+                style: 1,
+                label: "Reveal Roll",
+                custom_id: `roll-reveal:${userId}`,
+              },
+            ],
+          },
+        ],
+      };
+    }
+
+    return { success: true, message, ephemeral: false };
   },
 });

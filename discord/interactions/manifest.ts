@@ -41,6 +41,7 @@ export { default as feedbackModal } from "./components/feedback-modal.ts";
 export { default as giveawayEnter } from "./components/giveaway-enter.ts";
 export { default as pollVote } from "./components/poll-vote.ts";
 export { default as reactRole } from "./components/react-role.ts";
+export { default as rollReveal } from "./components/roll-reveal.ts";
 export { default as ticketModal } from "./components/ticket-modal.ts";
 export { default as ticketJoin } from "./components/ticket-join.ts";
 export { default as ticketClose } from "./components/ticket-close.ts";
