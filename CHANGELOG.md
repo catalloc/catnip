@@ -29,7 +29,7 @@
 - Health check endpoint
 
 ### Testing
-- **482 tests** across **51 files** with 100% pass rate
+- **529 tests** across **51 files** with 100% pass rate
 - Full coverage across commands, components, persistence, crons, linked roles, and webhooks
 - Offline test infrastructure with mocks for SQLite, blob storage, fetch, env, signing, and Val Town utilities
 

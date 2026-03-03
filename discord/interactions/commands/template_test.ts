@@ -5,6 +5,7 @@ import { sqlite } from "../../../test/_mocks/sqlite.ts";
 import { mockFetch, restoreFetch, getCalls } from "../../../test/_mocks/fetch.ts";
 import { _internals } from "./template.ts";
 import type { TemplateEntry } from "./template.ts";
+import { InteractionResponseType } from "../patterns.ts";
 
 function resetStore() {
   (blob as any)._reset();
@@ -12,6 +13,17 @@ function resetStore() {
 }
 
 const ADMIN_PERMISSIONS = "8";
+
+function autocompleteBody(guildId: string, query: string) {
+  return {
+    guild_id: guildId,
+    data: {
+      options: [{
+        options: [{ name: "name", value: query, focused: true }],
+      }],
+    },
+  };
+}
 
 function makeTemplate(overrides?: Partial<TemplateEntry>): TemplateEntry {
   return {
@@ -401,4 +413,276 @@ Deno.test("template delete: non-admin rejected", async () => {
   } as any);
   assertEquals(result.success, false);
   assert(result.error?.includes("admin"));
+});
+
+Deno.test("template delete: not found", async () => {
+  resetStore();
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "delete", name: "nope" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+Deno.test("template create: rejects invalid name", async () => {
+  resetStore();
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "create", name: "!!!!" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("Invalid name"));
+});
+
+Deno.test("template add-field: not found", async () => {
+  resetStore();
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "add-field", name: "nope", "field-name": "F", "field-value": "V" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+Deno.test("template add-field: enforces 25-field limit", async () => {
+  resetStore();
+  const fields = Array.from({ length: 25 }, (_, i) => ({ name: `f${i}`, value: `v${i}` }));
+  await blob.setJSON("template:g1:test", makeTemplate({ fields }));
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "add-field", name: "test", "field-name": "Extra", "field-value": "V" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("25 fields"));
+});
+
+Deno.test("template add-field: inline defaults to false", async () => {
+  resetStore();
+  await blob.setJSON("template:g1:test", makeTemplate());
+  const mod = (await import("./template.ts")).default;
+  await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "add-field", name: "test", "field-name": "NoInline", "field-value": "V" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  const entry = await blob.getJSON<TemplateEntry>("template:g1:test");
+  assertEquals(entry?.fields?.[0].inline, false);
+});
+
+Deno.test("template remove-field: not found template", async () => {
+  resetStore();
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "remove-field", name: "nope", "field-name": "F" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+Deno.test("template allow-role: not found template", async () => {
+  resetStore();
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "allow-role", name: "nope", role: "role1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+Deno.test("template deny-role: not found template", async () => {
+  resetStore();
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "deny-role", name: "nope", role: "role1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+Deno.test("template deny-role: role not in list", async () => {
+  resetStore();
+  await blob.setJSON("template:g1:test", makeTemplate({ allowedRoles: ["role1"] }));
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "deny-role", name: "test", role: "role999" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("doesn't have"));
+});
+
+Deno.test("template send: not found", async () => {
+  resetStore();
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "send", name: "nope", channelId: "ch1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("not found"));
+});
+
+Deno.test("template send: API failure returns error", async () => {
+  resetStore();
+  mockFetch({ default: { status: 403, body: { message: "Missing Permissions" } } });
+  try {
+    await blob.setJSON("template:g1:test", makeTemplate());
+    const mod = (await import("./template.ts")).default;
+    const result = await mod.execute({
+      guildId: "g1",
+      userId: "u1",
+      options: { subcommand: "send", name: "test", channelId: "ch1" },
+      memberRoles: [],
+      memberPermissions: ADMIN_PERMISSIONS,
+    } as any);
+    assertEquals(result.success, false);
+    assert(result.error?.includes("Failed to send"));
+  } finally {
+    restoreFetch();
+  }
+});
+
+Deno.test("template send: non-admin ignores channel override", async () => {
+  resetStore();
+  mockFetch({ default: { status: 200, body: { id: "msg1" } } });
+  try {
+    await blob.setJSON("template:g1:test", makeTemplate({ allowedRoles: ["role1"] }));
+    const mod = (await import("./template.ts")).default;
+    const result = await mod.execute({
+      guildId: "g1",
+      userId: "u2",
+      options: { subcommand: "send", name: "test", channel: "other-ch", channelId: "current-ch" },
+      memberRoles: ["role1"],
+      memberPermissions: "0",
+    } as any);
+    assertEquals(result.success, true);
+    // Should use channelId (current channel), not the channel option
+    const calls = getCalls();
+    assert(calls.some((c) => c.url.includes("channels/current-ch/messages")));
+    assert(!calls.some((c) => c.url.includes("channels/other-ch/messages")));
+  } finally {
+    restoreFetch();
+  }
+});
+
+Deno.test("template send: admin can specify channel", async () => {
+  resetStore();
+  mockFetch({ default: { status: 200, body: { id: "msg1" } } });
+  try {
+    await blob.setJSON("template:g1:test", makeTemplate());
+    const mod = (await import("./template.ts")).default;
+    const result = await mod.execute({
+      guildId: "g1",
+      userId: "u1",
+      options: { subcommand: "send", name: "test", channel: "other-ch", channelId: "current-ch" },
+      memberRoles: [],
+      memberPermissions: ADMIN_PERMISSIONS,
+    } as any);
+    assertEquals(result.success, true);
+    const calls = getCalls();
+    assert(calls.some((c) => c.url.includes("channels/other-ch/messages")));
+  } finally {
+    restoreFetch();
+  }
+});
+
+Deno.test("template preview: embed includes fields and image", async () => {
+  resetStore();
+  await blob.setJSON("template:g1:test", makeTemplate({
+    fields: [{ name: "F1", value: "V1", inline: true }],
+    imageUrl: "https://example.com/img.png",
+  }));
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "preview", name: "test" },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, true);
+  assertEquals(result.embed?.fields?.[0]?.name, "F1");
+  assertEquals(result.embed?.image?.url, "https://example.com/img.png");
+});
+
+Deno.test("template: invalid subcommand returns error", async () => {
+  resetStore();
+  const mod = (await import("./template.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "invalid" },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("subcommand"));
+});
+
+Deno.test("template autocomplete: returns all with empty query", async () => {
+  resetStore();
+  await blob.setJSON("template:ac-g1:welcome", makeTemplate());
+  await blob.setJSON("template:ac-g1:rules", makeTemplate());
+  const mod = (await import("./template.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-g1", ""), {});
+  const data = await resp.json();
+  assertEquals(data.type, InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT);
+  assertEquals(data.data.choices.length, 2);
+});
+
+Deno.test("template autocomplete: filters by query", async () => {
+  resetStore();
+  await blob.setJSON("template:ac-g2:welcome", makeTemplate());
+  await blob.setJSON("template:ac-g2:rules", makeTemplate());
+  const mod = (await import("./template.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-g2", "wel"), {});
+  const data = await resp.json();
+  assertEquals(data.data.choices.length, 1);
+  assertEquals(data.data.choices[0].value, "welcome");
+});
+
+Deno.test("template autocomplete: scoped to guild", async () => {
+  resetStore();
+  await blob.setJSON("template:ac-g3:mine", makeTemplate());
+  await blob.setJSON("template:ac-g4:theirs", makeTemplate());
+  const mod = (await import("./template.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-g3", ""), {});
+  const data = await resp.json();
+  assertEquals(data.data.choices.length, 1);
+  assertEquals(data.data.choices[0].value, "mine");
 });

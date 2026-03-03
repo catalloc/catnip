@@ -201,3 +201,137 @@ Deno.test("template-modal: color without hash works", async () => {
   const entry = await blob.getJSON<TemplateEntry>("template:g1:test");
   assertEquals(entry?.color, 0x5865f2);
 });
+
+Deno.test("template-modal: invalid customId returns error", async () => {
+  resetStore();
+  const mod = (await import("./template-modal.ts")).default;
+  const result = await mod.execute({
+    customId: "template-modal:bad",
+    guildId: "g1",
+    userId: "u1",
+    interaction: {},
+    fields: {
+      template_title: "Title",
+      template_description: "Desc",
+      template_color: "",
+      template_footer: "",
+      template_image_url: "",
+    },
+  });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("Invalid modal ID"));
+});
+
+Deno.test("template-modal: invalid action returns error", async () => {
+  resetStore();
+  const mod = (await import("./template-modal.ts")).default;
+  const result = await mod.execute({
+    customId: "template-modal:unknown:g1:test",
+    guildId: "g1",
+    userId: "u1",
+    interaction: {},
+    fields: {
+      template_title: "Title",
+      template_description: "Desc",
+      template_color: "",
+      template_footer: "",
+      template_image_url: "",
+    },
+  });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("Invalid modal action"));
+});
+
+Deno.test("template-modal create: sets createdBy to userId", async () => {
+  resetStore();
+  const mod = (await import("./template-modal.ts")).default;
+  await mod.execute({
+    customId: "template-modal:create:g1:test",
+    guildId: "g1",
+    userId: "user-abc",
+    interaction: {},
+    fields: {
+      template_title: "Title",
+      template_description: "Desc",
+      template_color: "",
+      template_footer: "",
+      template_image_url: "",
+    },
+  });
+  const entry = await blob.getJSON<TemplateEntry>("template:g1:test");
+  assertEquals(entry?.createdBy, "user-abc");
+  assert(entry?.createdAt !== undefined);
+  assertEquals(entry?.createdAt, entry?.updatedAt);
+});
+
+Deno.test("template-modal edit: preserves createdBy and updates updatedAt", async () => {
+  resetStore();
+  await blob.setJSON("template:g1:test", {
+    title: "Old",
+    description: "Old",
+    createdBy: "original-author",
+    createdAt: "2024-01-01T00:00:00.000Z",
+    updatedAt: "2024-01-01T00:00:00.000Z",
+  });
+
+  const mod = (await import("./template-modal.ts")).default;
+  await mod.execute({
+    customId: "template-modal:edit:g1:test",
+    guildId: "g1",
+    userId: "editor-user",
+    interaction: {},
+    fields: {
+      template_title: "New",
+      template_description: "New desc",
+      template_color: "",
+      template_footer: "",
+      template_image_url: "",
+    },
+  });
+  const entry = await blob.getJSON<TemplateEntry>("template:g1:test");
+  assertEquals(entry?.createdBy, "original-author");
+  assertEquals(entry?.createdAt, "2024-01-01T00:00:00.000Z");
+  assert(entry!.updatedAt > "2024-01-01T00:00:00.000Z");
+});
+
+Deno.test("template-modal: http:// URL accepted", async () => {
+  resetStore();
+  const mod = (await import("./template-modal.ts")).default;
+  const result = await mod.execute({
+    customId: "template-modal:create:g1:test",
+    guildId: "g1",
+    userId: "u1",
+    interaction: {},
+    fields: {
+      template_title: "Title",
+      template_description: "Desc",
+      template_color: "",
+      template_footer: "",
+      template_image_url: "http://example.com/img.png",
+    },
+  });
+  assertEquals(result.success, true);
+  const entry = await blob.getJSON<TemplateEntry>("template:g1:test");
+  assertEquals(entry?.imageUrl, "http://example.com/img.png");
+});
+
+Deno.test("template-modal: short hex color (3 chars) accepted", async () => {
+  resetStore();
+  const mod = (await import("./template-modal.ts")).default;
+  const result = await mod.execute({
+    customId: "template-modal:create:g1:test",
+    guildId: "g1",
+    userId: "u1",
+    interaction: {},
+    fields: {
+      template_title: "Title",
+      template_description: "Desc",
+      template_color: "#fff",
+      template_footer: "",
+      template_image_url: "",
+    },
+  });
+  assertEquals(result.success, true);
+  const entry = await blob.getJSON<TemplateEntry>("template:g1:test");
+  assertEquals(entry?.color, 0xfff);
+});

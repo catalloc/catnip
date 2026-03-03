@@ -3,6 +3,7 @@ import { assertEquals, assert } from "@std/assert";
 import { blob } from "../../../test/_mocks/blob.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
 import { _internals } from "./paste.ts";
+import { InteractionResponseType } from "../patterns.ts";
 
 function resetStore() {
   (blob as any)._reset();
@@ -10,6 +11,17 @@ function resetStore() {
 }
 
 const ADMIN_PERMISSIONS = "8";
+
+function autocompleteBody(guildId: string, query: string) {
+  return {
+    guild_id: guildId,
+    data: {
+      options: [{
+        options: [{ name: "code", value: query, focused: true }],
+      }],
+    },
+  };
+}
 
 Deno.test("paste _internals.blobKey: correct format", () => {
   assertEquals(_internals.blobKey("g1", "abc123"), "paste:g1:abc123");
@@ -221,4 +233,112 @@ Deno.test("paste delete: not found", async () => {
   } as any);
   assertEquals(result.success, false);
   assert(result.error?.includes("not found"));
+});
+
+Deno.test("paste: invalid subcommand returns error", async () => {
+  resetStore();
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "invalid" },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("subcommand"));
+});
+
+Deno.test("paste list: truncates long content with ellipsis", async () => {
+  resetStore();
+  await blob.setJSON("paste:g1:code0001", {
+    content: "x".repeat(100),
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+  });
+  const mod = (await import("./paste.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "list" },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("..."));
+  assert(!result.embed?.description?.includes("x".repeat(51)));
+});
+
+Deno.test("paste autocomplete: returns all pastes with empty query", async () => {
+  resetStore();
+  await blob.setJSON("paste:ac-g1:aaa11111", {
+    content: "first paste",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+  });
+  await blob.setJSON("paste:ac-g1:bbb22222", {
+    content: "second paste",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+  });
+  const mod = (await import("./paste.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-g1", ""), {});
+  const data = await resp.json();
+  assertEquals(data.type, InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT);
+  assertEquals(data.data.choices.length, 2);
+});
+
+Deno.test("paste autocomplete: filters by code", async () => {
+  resetStore();
+  await blob.setJSON("paste:ac-g2:aaa11111", {
+    content: "first",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+  });
+  await blob.setJSON("paste:ac-g2:bbb22222", {
+    content: "second",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+  });
+  const mod = (await import("./paste.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-g2", "aaa"), {});
+  const data = await resp.json();
+  assertEquals(data.data.choices.length, 1);
+  assertEquals(data.data.choices[0].value, "aaa11111");
+});
+
+Deno.test("paste autocomplete: filters by content", async () => {
+  resetStore();
+  await blob.setJSON("paste:ac-g3:aaa11111", {
+    content: "hello world",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+  });
+  await blob.setJSON("paste:ac-g3:bbb22222", {
+    content: "goodbye moon",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+  });
+  const mod = (await import("./paste.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-g3", "hello"), {});
+  const data = await resp.json();
+  assertEquals(data.data.choices.length, 1);
+  assertEquals(data.data.choices[0].value, "aaa11111");
+});
+
+Deno.test("paste autocomplete: scoped to guild", async () => {
+  resetStore();
+  await blob.setJSON("paste:ac-g4:aaa11111", {
+    content: "guild 1",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+  });
+  await blob.setJSON("paste:ac-g5:bbb22222", {
+    content: "guild 2",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+  });
+  const mod = (await import("./paste.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-g4", ""), {});
+  const data = await resp.json();
+  assertEquals(data.data.choices.length, 1);
+  assertEquals(data.data.choices[0].value, "aaa11111");
 });

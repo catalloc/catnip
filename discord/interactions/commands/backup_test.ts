@@ -4,6 +4,7 @@ import { blob } from "../../../test/_mocks/blob.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
 import { kv } from "../../persistence/kv.ts";
 import { _internals } from "./backup.ts";
+import { InteractionResponseType } from "../patterns.ts";
 
 function resetStore() {
   (blob as any)._reset();
@@ -11,6 +12,17 @@ function resetStore() {
 }
 
 const ADMIN_PERMISSIONS = "8";
+
+function autocompleteBody(guildId: string, query: string) {
+  return {
+    guild_id: guildId,
+    data: {
+      options: [{
+        options: [{ name: "id", value: query, focused: true }],
+      }],
+    },
+  };
+}
 
 Deno.test("backup _internals.blobKey: correct format", () => {
   assertEquals(_internals.blobKey("g1", "abc"), "backup:g1:abc");
@@ -262,4 +274,179 @@ Deno.test("backup delete: not found", async () => {
   } as any);
   assertEquals(result.success, false);
   assert(result.error?.includes("not found"));
+});
+
+Deno.test("backup export: creates backup with all data types", async () => {
+  resetStore();
+  await kv.set("tags:g1", {
+    hello: { content: "world", createdBy: "u1", createdAt: "2024-01-01" },
+  });
+  await blob.setJSON("template:g1:welcome", {
+    title: "Welcome",
+    description: "Hello!",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    updatedAt: "2024-01-01",
+  });
+  await kv.set("counter:g1", 42);
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "export" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("1 tags"));
+  assert(result.embed?.description?.includes("1 templates"));
+  assert(result.embed?.description?.includes("counter"));
+});
+
+Deno.test("backup export: empty data shows no data", async () => {
+  resetStore();
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "export" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("no data"));
+});
+
+Deno.test("backup import: empty data object succeeds", async () => {
+  resetStore();
+  await blob.setJSON("backup:g1:empty1", {
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01",
+    data: {},
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "import", id: "empty1" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("no data"));
+});
+
+Deno.test("backup list: shows mixed data types per backup", async () => {
+  resetStore();
+  await blob.setJSON("backup:g1:id1", {
+    version: 1,
+    guildId: "g1",
+    createdBy: "u1",
+    createdAt: "2024-06-15T10:00:00.000Z",
+    data: {
+      tags: { hello: { content: "world", createdBy: "u1", createdAt: "2024-01-01" } },
+      templates: { welcome: { title: "W", description: "D", createdBy: "u1", createdAt: "2024-01-01", updatedAt: "2024-01-01" } },
+      counter: 5,
+    },
+  });
+
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "list" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("1 tags"));
+  assert(result.embed?.description?.includes("1 templates"));
+  assert(result.embed?.description?.includes("counter"));
+});
+
+Deno.test("backup: invalid subcommand returns error", async () => {
+  resetStore();
+  const mod = (await import("./backup.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "invalid" },
+    memberRoles: [],
+    memberPermissions: ADMIN_PERMISSIONS,
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("subcommand"));
+});
+
+Deno.test("backup autocomplete: returns all backups with empty query", async () => {
+  resetStore();
+  await blob.setJSON("backup:ac-g1:id1", {
+    version: 1,
+    guildId: "ac-g1",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+    data: {},
+  });
+  await blob.setJSON("backup:ac-g1:id2", {
+    version: 1,
+    guildId: "ac-g1",
+    createdBy: "u1",
+    createdAt: "2024-01-02T00:00:00.000Z",
+    data: {},
+  });
+  const mod = (await import("./backup.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-g1", ""), {});
+  const data = await resp.json();
+  assertEquals(data.type, InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT);
+  assertEquals(data.data.choices.length, 2);
+});
+
+Deno.test("backup autocomplete: filters by query", async () => {
+  resetStore();
+  await blob.setJSON("backup:ac-g2:abc", {
+    version: 1,
+    guildId: "ac-g2",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+    data: {},
+  });
+  await blob.setJSON("backup:ac-g2:xyz", {
+    version: 1,
+    guildId: "ac-g2",
+    createdBy: "u1",
+    createdAt: "2024-01-02T00:00:00.000Z",
+    data: {},
+  });
+  const mod = (await import("./backup.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-g2", "abc"), {});
+  const data = await resp.json();
+  assertEquals(data.data.choices.length, 1);
+  assertEquals(data.data.choices[0].value, "abc");
+});
+
+Deno.test("backup autocomplete: scoped to guild", async () => {
+  resetStore();
+  await blob.setJSON("backup:ac-g3:mine", {
+    version: 1,
+    guildId: "ac-g3",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+    data: {},
+  });
+  await blob.setJSON("backup:ac-g4:theirs", {
+    version: 1,
+    guildId: "ac-g4",
+    createdBy: "u1",
+    createdAt: "2024-01-01T00:00:00.000Z",
+    data: {},
+  });
+  const mod = (await import("./backup.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-g3", ""), {});
+  const data = await resp.json();
+  assertEquals(data.data.choices.length, 1);
+  assertEquals(data.data.choices[0].value, "mine");
 });

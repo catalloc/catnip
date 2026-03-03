@@ -1150,7 +1150,7 @@ export default defineComponent({
 
 ## Testing
 
-Catnip has a comprehensive test suite — **51 test files** with **482 tests** and
+Catnip has a comprehensive test suite — **51 test files** with **529 tests** and
 a **100% pass rate**. Tests run on Deno's built-in test runner with no external
 test dependencies.
 
@@ -1164,8 +1164,8 @@ deno test --allow-env --allow-net --no-check
 |---|---|---|---|
 | **Core infrastructure** | 6 | 61 | Config loading, API retry logic, crypto helpers, duration parsing, embed builder, timeouts |
 | **Interaction framework** | 7 | 55 | Handler dispatch, auto-discovery, command factory, component factory, error handling, patterns, registration |
-| **Commands** | 14 | 152 | backup, facts, giveaway, paste, poll, r, remind, schedule, server, stash, tag, template, ticket |
-| **Components** | 9 | 60 | giveaway-enter, poll-vote, react-role, roll-reveal, template-modal, ticket-close, ticket-close-modal, ticket-join, ticket-modal |
+| **Commands** | 14 | 193 | backup, facts, giveaway, paste, poll, r, remind, schedule, server, stash, tag, template, ticket |
+| **Components** | 9 | 66 | giveaway-enter, poll-vote, react-role, roll-reveal, template-modal, ticket-close, ticket-close-modal, ticket-join, ticket-modal |
 | **Persistence** | 2 | 43 | KV store CRUD, atomic operations, optimistic concurrency, time-based queries, guild config |
 | **Linked roles** | 5 | 34 | OAuth2 flow, verifier factory, Patreon webhook, routes, CSRF state tokens |
 | **Webhooks** | 2 | 36 | Batched logger (flush, levels, truncation), message sending (chunking, embeds, rate limits) |

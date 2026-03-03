@@ -2,9 +2,21 @@ import "../../../test/_mocks/env.ts";
 import { assertEquals, assert } from "@std/assert";
 import { blob } from "../../../test/_mocks/blob.ts";
 import { _internals } from "./stash.ts";
+import { InteractionResponseType } from "../patterns.ts";
 
 function resetStore() {
   (blob as any)._reset();
+}
+
+function autocompleteBody(userId: string, query: string) {
+  return {
+    member: { user: { id: userId } },
+    data: {
+      options: [{
+        options: [{ name: "name", value: query, focused: true }],
+      }],
+    },
+  };
 }
 
 Deno.test("stash _internals.sanitizeName: lowercases and strips invalid chars", () => {
@@ -16,6 +28,10 @@ Deno.test("stash _internals.sanitizeName: lowercases and strips invalid chars", 
 
 Deno.test("stash _internals.blobKey: correct format", () => {
   assertEquals(_internals.blobKey("u1", "test"), "stash:u1:test");
+});
+
+Deno.test("stash _internals.blobPrefix: correct format", () => {
+  assertEquals(_internals.blobPrefix("u1"), "stash:u1:");
 });
 
 Deno.test("stash save: creates a new entry", async () => {
@@ -179,4 +195,111 @@ Deno.test("stash delete: not found", async () => {
   } as any);
   assertEquals(result.success, false);
   assert(result.error?.includes("not found"));
+});
+
+Deno.test("stash: invalid subcommand returns error", async () => {
+  resetStore();
+  const mod = (await import("./stash.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "invalid" },
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("subcommand"));
+});
+
+Deno.test("stash save: sets updatedAt on new entry", async () => {
+  resetStore();
+  const before = new Date().toISOString();
+  const mod = (await import("./stash.ts")).default;
+  await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "save", name: "test", content: "data" },
+  } as any);
+  const entry = await blob.getJSON<any>("stash:u1:test");
+  assert(entry?.createdAt >= before);
+  assert(entry?.updatedAt >= before);
+  assertEquals(entry?.createdAt, entry?.updatedAt);
+});
+
+Deno.test("stash save: updates updatedAt on upsert", async () => {
+  resetStore();
+  await blob.setJSON("stash:u1:test", {
+    content: "old",
+    createdAt: "2024-01-01T00:00:00.000Z",
+    updatedAt: "2024-01-01T00:00:00.000Z",
+  });
+  const mod = (await import("./stash.ts")).default;
+  await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "save", name: "test", content: "new" },
+  } as any);
+  const entry = await blob.getJSON<any>("stash:u1:test");
+  assertEquals(entry?.createdAt, "2024-01-01T00:00:00.000Z");
+  assert(entry?.updatedAt > "2024-01-01T00:00:00.000Z");
+});
+
+Deno.test("stash list: truncates long content with ellipsis", async () => {
+  resetStore();
+  const longContent = "x".repeat(100);
+  await blob.setJSON("stash:u1:long", {
+    content: longContent,
+    createdAt: "2024-01-01T00:00:00.000Z",
+    updatedAt: "2024-01-01T00:00:00.000Z",
+  });
+  const mod = (await import("./stash.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "list" },
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("..."));
+  // Preview should be 50 chars + "..."
+  assert(!result.embed?.description?.includes("x".repeat(51)));
+});
+
+Deno.test("stash autocomplete: returns all keys with empty query", async () => {
+  resetStore();
+  await blob.setJSON("stash:ac-u1:alpha", { content: "a", createdAt: "", updatedAt: "" });
+  await blob.setJSON("stash:ac-u1:beta", { content: "b", createdAt: "", updatedAt: "" });
+  const mod = (await import("./stash.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-u1", ""), {});
+  const data = await resp.json();
+  assertEquals(data.type, InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT);
+  assertEquals(data.data.choices.length, 2);
+});
+
+Deno.test("stash autocomplete: filters by query", async () => {
+  resetStore();
+  await blob.setJSON("stash:ac-u2:alpha", { content: "a", createdAt: "", updatedAt: "" });
+  await blob.setJSON("stash:ac-u2:beta", { content: "b", createdAt: "", updatedAt: "" });
+  const mod = (await import("./stash.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-u2", "alp"), {});
+  const data = await resp.json();
+  assertEquals(data.data.choices.length, 1);
+  assertEquals(data.data.choices[0].value, "alpha");
+});
+
+Deno.test("stash autocomplete: returns empty for no matches", async () => {
+  resetStore();
+  await blob.setJSON("stash:ac-u3:alpha", { content: "a", createdAt: "", updatedAt: "" });
+  const mod = (await import("./stash.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-u3", "zzz"), {});
+  const data = await resp.json();
+  assertEquals(data.data.choices.length, 0);
+});
+
+Deno.test("stash autocomplete: scoped to user", async () => {
+  resetStore();
+  await blob.setJSON("stash:ac-u4:mine", { content: "a", createdAt: "", updatedAt: "" });
+  await blob.setJSON("stash:ac-u5:theirs", { content: "b", createdAt: "", updatedAt: "" });
+  const mod = (await import("./stash.ts")).default;
+  const resp = await mod.autocomplete!(autocompleteBody("ac-u4", ""), {});
+  const data = await resp.json();
+  assertEquals(data.data.choices.length, 1);
+  assertEquals(data.data.choices[0].value, "mine");
 });
