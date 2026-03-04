@@ -16,6 +16,7 @@ const EXPIRY_DEFAULTS: Record<ActivityType, number> = {
   train: 24 * 60 * 60_000,
   arena: 30 * 60_000,
   blackjack: 10 * 60_000,
+  adventure: 60 * 60_000,
 };
 
 const ACTIVITY_LABELS: Record<ActivityType, string> = {
@@ -26,6 +27,7 @@ const ACTIVITY_LABELS: Record<ActivityType, string> = {
   train: "training",
   arena: "in an arena fight",
   blackjack: "playing blackjack",
+  adventure: "on an adventure",
 };
 
 function lockKey(guildId: string, userId: string): string {

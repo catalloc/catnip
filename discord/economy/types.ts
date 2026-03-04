@@ -17,7 +17,7 @@ export interface EconomyAccount {
 
 // ── Activity Lock ────────────────────────────────────────
 
-export type ActivityType = "farm" | "mine" | "forage" | "job" | "train" | "arena" | "blackjack";
+export type ActivityType = "farm" | "mine" | "forage" | "job" | "train" | "arena" | "blackjack" | "adventure";
 
 export interface ActivityLock {
   activityType: ActivityType;
@@ -94,7 +94,7 @@ export interface CrimeState {
 
 // ── Shop ──────────────────────────────────────────────────
 
-export type ShopItemType = "job-upgrade" | "cosmetic-role" | "custom" | "profile-title" | "profile-badge" | "profile-border" | "weapon";
+export type ShopItemType = "job-upgrade" | "cosmetic-role" | "custom" | "profile-title" | "profile-badge" | "profile-border" | "weapon" | "carry-limit-upgrade";
 
 export type WeaponType = "sword" | "bow" | "magic";
 
@@ -113,6 +113,7 @@ export interface ShopItem {
   weaponId?: string;
   weaponDamage?: number;
   weaponType?: WeaponType;
+  carryLimitValue?: number;
   enabled: boolean;
 }
 
@@ -160,6 +161,7 @@ export interface EconomyGuildConfig {
   forageEnabled: boolean;
   trainEnabled: boolean;
   arenaEnabled: boolean;
+  adventureEnabled: boolean;
   startingBalance: number;
   createdAt: number;
   updatedAt: number;
@@ -310,4 +312,104 @@ export interface WeaponDefinition {
   damage: number;
   weaponType: WeaponType;
   requiredLevel: number;
+}
+
+// ── Consumable Items ───────────────────────────────────
+
+export type ConsumableItemId =
+  | "health-potion" | "greater-health-potion" | "mega-health-potion"
+  | "damage-boost" | "greater-damage-boost"
+  | "shield-potion" | "greater-shield-potion"
+  | "antidote" | "revive-charm"
+  | "bread" | "stew" | "feast";
+
+export type ItemEffect =
+  | { type: "heal"; amount: number }
+  | { type: "heal-percent"; percent: number }
+  | { type: "damage-boost"; multiplier: number; turns: number }
+  | { type: "shield"; reduction: number; turns: number }
+  | { type: "cleanse" }
+  | { type: "revive"; hpPercent: number };
+
+export interface ConsumableItemDefinition {
+  id: ConsumableItemId;
+  name: string;
+  emoji: string;
+  description: string;
+  shopPrice: number | null;
+  effect: ItemEffect;
+}
+
+// ── Inventory ──────────────────────────────────────────
+
+export interface InventorySlot {
+  itemId: ConsumableItemId;
+  quantity: number;
+}
+
+export interface PlayerInventory {
+  guildId: string;
+  userId: string;
+  items: InventorySlot[];
+  carryLimit: number;
+  updatedAt: number;
+}
+
+// ── Dungeons ───────────────────────────────────────────
+
+export interface DungeonFloorConfig {
+  normals: string[];
+  boss: string;
+  roomCount: number;
+}
+
+export interface DungeonDefinition {
+  id: string;
+  name: string;
+  emoji: string;
+  requiredLevel: number;
+  floors: number;
+  description: string;
+  floorConfigs: Record<number, DungeonFloorConfig>;
+  baseCoinsPerFloor: number;
+  baseXpPerFloor: number;
+  completionBonus: number;
+}
+
+export interface ActiveBuff {
+  type: "damage-boost" | "shield" | "revive";
+  value: number;
+  turnsRemaining: number;
+}
+
+export interface DungeonCombatState {
+  monster: MonsterDefinition;
+  monsterHp: number;
+  monsterMaxHp: number;
+  isBoss: boolean;
+  berserkActive: boolean;
+  shieldActive: boolean;
+}
+
+export interface DungeonSession {
+  guildId: string;
+  userId: string;
+  dungeonId: string;
+  currentFloor: number;
+  currentRoom: number;
+  totalRoomsOnFloor: number;
+  combat: DungeonCombatState | null;
+  playerHp: number;
+  playerMaxHp: number;
+  playerStats: DerivedCombatStats;
+  activeBuffs: ActiveBuff[];
+  dungeonInventory: InventorySlot[];
+  accumulatedCoins: number;
+  accumulatedXp: number;
+  floorCleared: boolean;
+  floorsCompleted: number;
+  status: "combat" | "floor-cleared" | "retreated" | "victory" | "defeat";
+  turn: number;
+  log: string[];
+  createdAt: number;
 }

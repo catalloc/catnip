@@ -9,6 +9,7 @@ import { accounts } from "./accounts.ts";
 import { jobs, getTierIndex } from "./jobs.ts";
 import { profile } from "./profile.ts";
 import { training } from "./training.ts";
+import { inventory } from "./inventory.ts";
 import { discordBotFetch } from "../discord-api.ts";
 import type { ShopItem, ShopCatalog, JobTierId } from "./types.ts";
 
@@ -125,6 +126,14 @@ export const shop = {
 
     if (item.type === "weapon" && item.weaponId) {
       await training.equipWeapon(guildId, userId, item.weaponId);
+    }
+
+    if (item.type === "carry-limit-upgrade" && item.carryLimitValue) {
+      const upgradeResult = await inventory.upgradeCarryLimit(guildId, userId, item.carryLimitValue);
+      if (!upgradeResult.success) {
+        await accounts.creditBalance(guildId, userId, item.price);
+        return { success: false, error: upgradeResult.error };
+      }
     }
 
     return { success: true, item };

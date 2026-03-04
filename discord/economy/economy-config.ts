@@ -28,6 +28,7 @@ function createDefault(guildId: string): EconomyGuildConfig {
     forageEnabled: true,
     trainEnabled: true,
     arenaEnabled: true,
+    adventureEnabled: true,
     startingBalance: 0,
     createdAt: now,
     updatedAt: now,

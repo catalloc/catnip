@@ -51,6 +51,7 @@ export default defineCommand({
             { name: "Profile Badge", value: "profile-badge" },
             { name: "Profile Border", value: "profile-border" },
             { name: "Weapon", value: "weapon" },
+            { name: "Carry Limit Upgrade", value: "carry-limit-upgrade" },
           ],
         },
         { name: "job-tier", description: "Job tier to unlock (for job-upgrade type)", type: OptionTypes.STRING, required: false },
@@ -65,6 +66,7 @@ export default defineCommand({
           name: "weapon-type", description: "Weapon type (for weapon type)", type: OptionTypes.STRING, required: false,
           choices: [{ name: "Sword", value: "sword" }, { name: "Bow", value: "bow" }, { name: "Magic", value: "magic" }],
         },
+        { name: "carry-limit", description: "New carry limit (for carry-limit-upgrade type)", type: OptionTypes.INTEGER, required: false },
       ],
     },
     {
@@ -157,6 +159,7 @@ export default defineCommand({
       const weaponId = options?.["weapon-id"] as string | undefined;
       const weaponDamage = options?.["weapon-damage"] as number | undefined;
       const weaponType = options?.["weapon-type"] as WeaponType | undefined;
+      const carryLimitValue = options?.["carry-limit"] as number | undefined;
 
       if (price < 1) return { success: false, error: "Price must be at least 1." };
 
@@ -177,6 +180,7 @@ export default defineCommand({
         weaponId,
         weaponDamage,
         weaponType,
+        carryLimitValue,
       });
 
       if (!result.success) return { success: false, error: result.error };

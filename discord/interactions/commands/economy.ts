@@ -109,6 +109,15 @@ export default defineCommand({
       ],
     },
     {
+      name: "adventure",
+      description: "Configure adventure settings",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        { name: "enabled", description: "Enable or disable adventures", type: OptionTypes.BOOLEAN, required: true },
+      ],
+    },
+    {
       name: "reset",
       description: "Reset all economy settings to defaults",
       type: OptionTypes.SUB_COMMAND,
@@ -139,6 +148,7 @@ export default defineCommand({
         .field("Forage", config.forageEnabled ? "Enabled" : "Disabled", true)
         .field("Training", config.trainEnabled ? "Enabled" : "Disabled", true)
         .field("Arena", config.arenaEnabled ? "Enabled" : "Disabled", true)
+        .field("Adventure", config.adventureEnabled ? "Enabled" : "Disabled", true)
         .build();
 
       return { success: true, embed: e };
@@ -225,6 +235,11 @@ export default defineCommand({
     if (sub === "arena") {
       await economyConfig.update(guildId, { arenaEnabled: options?.enabled as boolean });
       return { success: true, message: `Arena ${options?.enabled ? "enabled" : "disabled"}.` };
+    }
+
+    if (sub === "adventure") {
+      await economyConfig.update(guildId, { adventureEnabled: options?.enabled as boolean });
+      return { success: true, message: `Adventures ${options?.enabled ? "enabled" : "disabled"}.` };
     }
 
     if (sub === "reset") {

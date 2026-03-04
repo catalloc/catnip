@@ -52,6 +52,7 @@ export { default as leaderboard } from "./commands/leaderboard.ts";
 export { default as shop } from "./commands/shop.ts";
 export { default as train } from "./commands/train.ts";
 export { default as arenaCmd } from "./commands/arena.ts";
+export { default as adventureCmd } from "./commands/adventure.ts";
 
 // Components
 export { default as colorSelect } from "./components/color-select.ts";
@@ -69,3 +70,4 @@ export { default as templateModal } from "./components/template-modal.ts";
 export { default as ticketCloseModal } from "./components/ticket-close-modal.ts";
 export { default as blackjackAction } from "./components/blackjack-action.ts";
 export { default as arenaAction } from "./components/arena-action.ts";
+export { default as adventureAction } from "./components/adventure-action.ts";
