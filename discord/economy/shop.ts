@@ -7,6 +7,7 @@
 import { kv } from "../persistence/kv.ts";
 import { accounts } from "./accounts.ts";
 import { jobs, getTierIndex } from "./jobs.ts";
+import { profile } from "./profile.ts";
 import { discordBotFetch } from "../discord-api.ts";
 import type { ShopItem, ShopCatalog, JobTierId } from "./types.ts";
 
@@ -107,6 +108,18 @@ export const shop = {
 
     if (item.type === "cosmetic-role" && item.roleId) {
       await discordBotFetch("PUT", `guilds/${guildId}/members/${userId}/roles/${item.roleId}`);
+    }
+
+    if (item.type === "profile-title" && item.profileTitle) {
+      await profile.setTitle(guildId, userId, item.profileTitle);
+    }
+
+    if (item.type === "profile-badge" && item.profileBadge) {
+      await profile.addBadge(guildId, userId, item.profileBadge);
+    }
+
+    if (item.type === "profile-border" && item.profileBorderColor != null) {
+      await profile.setBorderColor(guildId, userId, item.profileBorderColor);
     }
 
     return { success: true, item };

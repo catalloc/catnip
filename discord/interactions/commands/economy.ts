@@ -64,6 +64,33 @@ export default defineCommand({
       ],
     },
     {
+      name: "farm",
+      description: "Configure farm settings",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        { name: "enabled", description: "Enable or disable farming", type: OptionTypes.BOOLEAN, required: true },
+      ],
+    },
+    {
+      name: "mine",
+      description: "Configure mine settings",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        { name: "enabled", description: "Enable or disable mining", type: OptionTypes.BOOLEAN, required: true },
+      ],
+    },
+    {
+      name: "forage",
+      description: "Configure forage settings",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        { name: "enabled", description: "Enable or disable foraging", type: OptionTypes.BOOLEAN, required: true },
+      ],
+    },
+    {
       name: "reset",
       description: "Reset all economy settings to defaults",
       type: OptionTypes.SUB_COMMAND,
@@ -89,6 +116,9 @@ export default defineCommand({
         .field("Casino", config.casinoEnabled ? `Enabled (${config.casinoMinBet}-${config.casinoMaxBet.toLocaleString()})` : "Disabled", true)
         .field("Jobs", config.jobsEnabled ? "Enabled" : "Disabled", true)
         .field("Crime", config.crimeEnabled ? `Enabled${config.crimeFineEnabled ? " (fines on)" : " (fines off)"}` : "Disabled", true)
+        .field("Farm", config.farmEnabled ? "Enabled" : "Disabled", true)
+        .field("Mine", config.mineEnabled ? "Enabled" : "Disabled", true)
+        .field("Forage", config.forageEnabled ? "Enabled" : "Disabled", true)
         .build();
 
       return { success: true, embed: e };
@@ -150,6 +180,21 @@ export default defineCommand({
 
       await economyConfig.update(guildId, changes);
       return { success: true, message: `Crime settings updated: ${Object.keys(changes).join(", ")}.` };
+    }
+
+    if (sub === "farm") {
+      await economyConfig.update(guildId, { farmEnabled: options?.enabled as boolean });
+      return { success: true, message: `Farming ${options?.enabled ? "enabled" : "disabled"}.` };
+    }
+
+    if (sub === "mine") {
+      await economyConfig.update(guildId, { mineEnabled: options?.enabled as boolean });
+      return { success: true, message: `Mining ${options?.enabled ? "enabled" : "disabled"}.` };
+    }
+
+    if (sub === "forage") {
+      await economyConfig.update(guildId, { forageEnabled: options?.enabled as boolean });
+      return { success: true, message: `Foraging ${options?.enabled ? "enabled" : "disabled"}.` };
     }
 
     if (sub === "reset") {

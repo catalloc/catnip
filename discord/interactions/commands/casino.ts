@@ -15,8 +15,17 @@ import {
   blackjack, formatHand, handValue, isBlackjack, isBust,
   playDealerHand, determineOutcome, calculatePayout,
 } from "../../economy/casino/blackjack.ts";
+import { xp, XP_AWARDS } from "../../economy/xp.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors } from "../../constants.ts";
+
+async function grantCasinoXp(guildId: string, userId: string, won: boolean): Promise<string> {
+  const amount = won ? XP_AWARDS.CASINO_WIN : XP_AWARDS.CASINO_LOSS;
+  const result = await xp.grantXp(guildId, userId, amount);
+  let msg = ` (+${amount} XP)`;
+  if (result.levelsGained > 0) msg += ` | :arrow_up: Level ${result.newLevel}!`;
+  return msg;
+}
 
 function validateBet(bet: number, balance: number, min: number, max: number): string | null {
   if (bet < min) return `Minimum bet is **${min.toLocaleString()}**.`;
@@ -122,6 +131,7 @@ export default defineCommand({
       const result = playCoinflip(bet, call);
       if (result.payout > 0) await accounts.creditBalance(guildId, userId, result.payout);
       const newAccount = await accounts.getOrCreate(guildId, userId);
+      const xpMsg = await grantCasinoXp(guildId, userId, result.won);
 
       const e = embed()
         .title(`${config.currencyEmoji} Coin Flip`)
@@ -132,7 +142,7 @@ export default defineCommand({
             ? `You won **${result.payout.toLocaleString()} ${config.currencyName}**!`
             : `You lost **${bet.toLocaleString()} ${config.currencyName}**.`),
         )
-        .footer(`Balance: ${newAccount.balance.toLocaleString()} ${config.currencyName}`)
+        .footer(`Balance: ${newAccount.balance.toLocaleString()} ${config.currencyName}${xpMsg}`)
         .build();
 
       return { success: true, embed: e };
@@ -143,6 +153,7 @@ export default defineCommand({
       const result = playDice(bet, number);
       if (result.payout > 0) await accounts.creditBalance(guildId, userId, result.payout);
       const newAccount = await accounts.getOrCreate(guildId, userId);
+      const xpMsg = await grantCasinoXp(guildId, userId, result.won);
 
       const e = embed()
         .title(`${config.currencyEmoji} Dice Roll`)
@@ -153,7 +164,7 @@ export default defineCommand({
             ? `You won **${result.payout.toLocaleString()} ${config.currencyName}**!`
             : `You lost **${bet.toLocaleString()} ${config.currencyName}**.`),
         )
-        .footer(`Balance: ${newAccount.balance.toLocaleString()} ${config.currencyName}`)
+        .footer(`Balance: ${newAccount.balance.toLocaleString()} ${config.currencyName}${xpMsg}`)
         .build();
 
       return { success: true, embed: e };
@@ -163,6 +174,7 @@ export default defineCommand({
       const result = playSlots(bet);
       if (result.payout > 0) await accounts.creditBalance(guildId, userId, result.payout);
       const newAccount = await accounts.getOrCreate(guildId, userId);
+      const xpMsg = await grantCasinoXp(guildId, userId, result.won);
 
       const reelLine = `[ ${result.reels.join(" | ")} ]`;
       const e = embed()
@@ -174,7 +186,7 @@ export default defineCommand({
             ? `**${result.multiplier}x** — You won **${result.payout.toLocaleString()} ${config.currencyName}**!`
             : `No match — you lost **${bet.toLocaleString()} ${config.currencyName}**.`),
         )
-        .footer(`Balance: ${newAccount.balance.toLocaleString()} ${config.currencyName}`)
+        .footer(`Balance: ${newAccount.balance.toLocaleString()} ${config.currencyName}${xpMsg}`)
         .build();
 
       return { success: true, embed: e };
@@ -190,6 +202,7 @@ export default defineCommand({
       const result = playRoulette(bet, betType, number);
       if (result.payout > 0) await accounts.creditBalance(guildId, userId, result.payout);
       const newAccount = await accounts.getOrCreate(guildId, userId);
+      const xpMsg = await grantCasinoXp(guildId, userId, result.won);
 
       const colorEmoji = result.landedColor === "red" ? ":red_circle:" : result.landedColor === "black" ? ":black_circle:" : ":green_circle:";
       const e = embed()
@@ -202,7 +215,7 @@ export default defineCommand({
             ? `You won **${result.payout.toLocaleString()} ${config.currencyName}**!`
             : `You lost **${bet.toLocaleString()} ${config.currencyName}**.`),
         )
-        .footer(`Balance: ${newAccount.balance.toLocaleString()} ${config.currencyName}`)
+        .footer(`Balance: ${newAccount.balance.toLocaleString()} ${config.currencyName}${xpMsg}`)
         .build();
 
       return { success: true, embed: e };
@@ -223,9 +236,11 @@ export default defineCommand({
         const finalSession = playDealerHand(session);
         const outcome = determineOutcome(finalSession);
         const payout = calculatePayout(bet, outcome);
+        const bjWon = outcome !== "loss" && outcome !== "dealer-blackjack";
         if (payout > 0) await accounts.creditBalance(guildId, userId, payout);
         await blackjack.deleteSession(guildId, userId);
         const newAccount = await accounts.getOrCreate(guildId, userId);
+        const xpMsg = await grantCasinoXp(guildId, userId, bjWon);
 
         const desc = outcome === "push"
           ? "Both got blackjack — it's a **push**! Bet returned."
@@ -237,7 +252,7 @@ export default defineCommand({
           .description(desc)
           .field("Your Hand", `${formatHand(session.playerHand)} (${handValue(session.playerHand)})`, true)
           .field("Dealer Hand", `${formatHand(finalSession.dealerHand)} (${handValue(finalSession.dealerHand)})`, true)
-          .footer(`Balance: ${newAccount.balance.toLocaleString()} ${config.currencyName}`)
+          .footer(`Balance: ${newAccount.balance.toLocaleString()} ${config.currencyName}${xpMsg}`)
           .build();
 
         return { success: true, embed: e };

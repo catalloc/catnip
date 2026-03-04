@@ -68,13 +68,14 @@ Deno.test("crime: respects cooldown", async () => {
 Deno.test("crime: fines disabled mode", async () => {
   resetStore();
   await economyConfig.update(guildId, { crimeFineEnabled: false });
-  // Run many attempts to ensure at least one failure
-  for (let i = 0; i < 30; i++) {
+  // Use carjacking (50% success, level 0 not required for pickpocket but we want failures)
+  // Actually use pickpocket and run many times — 80% success so 20% chance of failure each time
+  for (let i = 0; i < 50; i++) {
     // Reset cooldown each time by clearing store
     (sqlite as any)._reset();
     await economyConfig.update(guildId, { crimeFineEnabled: false });
     const result = await command.execute({
-      guildId, userId, options: { type: "heist" }, config: {},
+      guildId, userId, options: { type: "pickpocket" }, config: {},
     } as any);
     assertEquals(result.success, true);
     if (result.embed?.description?.includes("caught")) {
@@ -82,6 +83,6 @@ Deno.test("crime: fines disabled mode", async () => {
       return; // Found a failure case — test passes
     }
   }
-  // With 20% success rate for heist, probability of all 30 succeeding is ~0.001%
-  assert(false, "Expected at least one failed crime in 30 attempts");
+  // With 80% success rate for pickpocket, probability of all 50 succeeding is ~0.001%
+  assert(false, "Expected at least one failed crime in 50 attempts");
 });

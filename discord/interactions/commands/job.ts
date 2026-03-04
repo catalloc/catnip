@@ -8,6 +8,7 @@ import { defineCommand, OptionTypes } from "../define-command.ts";
 import { accounts } from "../../economy/accounts.ts";
 import { economyConfig } from "../../economy/economy-config.ts";
 import { jobs, getTierConfig, computeEarnings, DEFAULT_JOB_TIERS } from "../../economy/jobs.ts";
+import { xp, XP_AWARDS } from "../../economy/xp.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors } from "../../constants.ts";
 
@@ -81,9 +82,14 @@ export default defineCommand({
 
       const account = await accounts.creditBalance(guildId, userId, coins);
 
+      // Grant XP based on hours worked
+      const xpAmount = hours * XP_AWARDS.JOB_COLLECT_PER_HOUR;
+      const xpResult = await xp.grantXp(guildId, userId, xpAmount);
+      const levelUpMsg = xpResult.levelsGained > 0 ? `\n:arrow_up: **Level up! You're now Level ${xpResult.newLevel}!**` : "";
+
       return {
         success: true,
-        message: `${config.currencyEmoji} Collected **${coins.toLocaleString()} ${config.currencyName}** from ${hours} hour(s) of work as a **${tier.name}**!\nNew balance: **${account.balance.toLocaleString()} ${config.currencyName}**`,
+        message: `${config.currencyEmoji} Collected **${coins.toLocaleString()} ${config.currencyName}** from ${hours} hour(s) of work as a **${tier.name}**!\nNew balance: **${account.balance.toLocaleString()} ${config.currencyName}** (+${xpAmount} XP)${levelUpMsg}`,
       };
     }
 

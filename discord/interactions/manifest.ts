@@ -39,6 +39,10 @@ export { default as userInfo } from "./commands/user-info.ts";
 
 // Economy Commands
 export { default as balance } from "./commands/balance.ts";
+export { default as farm } from "./commands/farm.ts";
+export { default as forage } from "./commands/forage.ts";
+export { default as mine } from "./commands/mine.ts";
+export { default as profile } from "./commands/profile.ts";
 export { default as casino } from "./commands/casino.ts";
 export { default as crime } from "./commands/crime.ts";
 export { default as economy } from "./commands/economy.ts";

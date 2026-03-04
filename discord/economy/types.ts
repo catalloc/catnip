@@ -58,6 +58,7 @@ export interface CrimeDefinition {
   fineMin: number;
   fineMax: number;
   cooldownMs: number;
+  requiredLevel: number;
 }
 
 export interface CrimeState {
@@ -71,7 +72,7 @@ export interface CrimeState {
 
 // ── Shop ──────────────────────────────────────────────────
 
-export type ShopItemType = "job-upgrade" | "cosmetic-role" | "custom";
+export type ShopItemType = "job-upgrade" | "cosmetic-role" | "custom" | "profile-title" | "profile-badge" | "profile-border";
 
 export interface ShopItem {
   id: string;
@@ -81,6 +82,10 @@ export interface ShopItem {
   price: number;
   unlocksJobTier?: JobTierId;
   roleId?: string;
+  requiredLevel?: number;
+  profileTitle?: string;
+  profileBadge?: string;
+  profileBorderColor?: number;
   enabled: boolean;
 }
 
@@ -123,7 +128,61 @@ export interface EconomyGuildConfig {
   jobsEnabled: boolean;
   crimeEnabled: boolean;
   crimeFineEnabled: boolean;
+  farmEnabled: boolean;
+  mineEnabled: boolean;
+  forageEnabled: boolean;
   startingBalance: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ── XP & Levels ──────────────────────────────────────────
+
+export interface XpState {
+  userId: string;
+  guildId: string;
+  xp: number;
+  level: number;
+  totalXpEarned: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ── Idle Actions ─────────────────────────────────────────
+
+export type IdleActionType = "farm" | "mine" | "forage";
+
+export interface IdleActionTier {
+  id: string;
+  name: string;
+  requiredLevel: number;
+  cooldownMs: number;
+  rewardMin: number;
+  rewardMax: number;
+  xpReward: number;
+  rareChance: number;
+  rareMultiplier: number;
+}
+
+export interface IdleActionState {
+  userId: string;
+  guildId: string;
+  actionType: IdleActionType;
+  tierId: string;
+  startedAt: number;
+  readyAt: number;
+  collected: boolean;
+}
+
+// ── Profile ──────────────────────────────────────────────
+
+export interface ProfileData {
+  userId: string;
+  guildId: string;
+  title?: string;
+  badgeIds: string[];
+  borderColor?: number;
+  activeBadgeId?: string;
   createdAt: number;
   updatedAt: number;
 }

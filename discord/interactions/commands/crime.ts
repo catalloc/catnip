@@ -7,7 +7,8 @@
 import { defineCommand, OptionTypes } from "../define-command.ts";
 import { accounts } from "../../economy/accounts.ts";
 import { economyConfig } from "../../economy/economy-config.ts";
-import { crimes, getCrimeDefinition, rollCrime, CRIME_DEFINITIONS } from "../../economy/crimes.ts";
+import { crimes, getCrimeDefinition, rollCrime, crimeXpAward, CRIME_DEFINITIONS } from "../../economy/crimes.ts";
+import { xp, makeXpBar } from "../../economy/xp.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors } from "../../constants.ts";
 import type { CrimeId } from "../../economy/types.ts";
@@ -49,6 +50,12 @@ export default defineCommand({
     const crime = getCrimeDefinition(crimeId);
     if (!crime) return { success: false, error: "Unknown crime type." };
 
+    // Check level requirement
+    const playerLevel = await xp.getLevel(guildId, userId);
+    if (playerLevel < crime.requiredLevel) {
+      return { success: false, error: `You need to be **Level ${crime.requiredLevel}** to attempt **${crime.name}**. You're Level ${playerLevel}.` };
+    }
+
     // Check cooldown
     const cooldownRemaining = await crimes.getCooldownRemaining(guildId, userId);
     if (cooldownRemaining > 0) {
@@ -61,13 +68,18 @@ export default defineCommand({
     const outcome = rollCrime(crime);
     await crimes.recordAttempt(guildId, userId, outcome.success, outcome.cooldownMs);
 
+    // Grant XP
+    const xpAmount = crimeXpAward(crimeId, outcome.success);
+    const xpResult = await xp.grantXp(guildId, userId, xpAmount);
+    const levelUpMsg = xpResult.levelsGained > 0 ? `\n:arrow_up: **Level up! You're now Level ${xpResult.newLevel}!**` : "";
+
     if (outcome.success) {
       const account = await accounts.creditBalance(guildId, userId, outcome.amount);
       const e = embed()
         .title(`${config.currencyEmoji} Crime — ${crime.name}`)
         .color(EmbedColors.SUCCESS)
         .description(
-          `You successfully committed **${crime.name}** and got away with **${outcome.amount.toLocaleString()} ${config.currencyName}**!`,
+          `You successfully committed **${crime.name}** and got away with **${outcome.amount.toLocaleString()} ${config.currencyName}**!\n+${xpAmount} XP${levelUpMsg}`,
         )
         .footer(`Balance: ${account.balance.toLocaleString()} ${config.currencyName} • Cooldown: ${formatDuration(outcome.cooldownMs)}`)
         .build();
@@ -82,7 +94,7 @@ export default defineCommand({
         .title(`${config.currencyEmoji} Crime — ${crime.name}`)
         .color(EmbedColors.ERROR)
         .description(
-          `You got caught attempting **${crime.name}** and were fined **${outcome.amount.toLocaleString()} ${config.currencyName}**!`,
+          `You got caught attempting **${crime.name}** and were fined **${outcome.amount.toLocaleString()} ${config.currencyName}**!\n+${xpAmount} XP${levelUpMsg}`,
         )
         .footer(`Balance: ${account.balance.toLocaleString()} ${config.currencyName} • Cooldown: ${formatDuration(outcome.cooldownMs)}`)
         .build();
@@ -95,7 +107,7 @@ export default defineCommand({
     const e = embed()
       .title(`${config.currencyEmoji} Crime — ${crime.name}`)
       .color(EmbedColors.ERROR)
-      .description(`You got caught attempting **${crime.name}** but escaped without a fine.`)
+      .description(`You got caught attempting **${crime.name}** but escaped without a fine.\n+${xpAmount} XP${levelUpMsg}`)
       .footer(`Balance: ${account.balance.toLocaleString()} ${config.currencyName} • Cooldown: ${formatDuration(outcome.cooldownMs)}`)
       .build();
 
