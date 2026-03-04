@@ -1,5 +1,5 @@
 import "../test/_mocks/env.ts";
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../test/assert.ts";
 import { commandsPath, discordBotFetch } from "./discord-api.ts";
 import { mockFetch, getCalls, restoreFetch, setNextThrow } from "../test/_mocks/fetch.ts";
 

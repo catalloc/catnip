@@ -1,5 +1,5 @@
 import "../../test/_mocks/env.ts";
-import { assertEquals, assert } from "@std/assert";
+import { assertEquals, assert } from "../../test/assert.ts";
 import { sqlite } from "https://esm.town/v/std/sqlite/main.ts";
 import { kv, _internals } from "./kv.ts";
 

@@ -1,6 +1,6 @@
 import "../../test/_mocks/env.ts";
 import "../../test/_mocks/sqlite.ts";
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../test/assert.ts";
 import { guildConfig } from "./guild-config.ts";
 
 const TEST_GUILD = "guild_test_123";

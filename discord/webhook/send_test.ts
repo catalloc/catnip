@@ -1,5 +1,5 @@
 import "../../test/_mocks/env.ts";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals } from "../../test/assert.ts";
 import { _internals, send } from "./send.ts";
 
 const { truncateText, splitMessage, calculateEmbedSize, sanitizeEmbed, chunkEmbeds, DISCORD_LIMITS } = _internals;

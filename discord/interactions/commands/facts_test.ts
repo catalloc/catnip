@@ -1,5 +1,5 @@
 import "../../../test/_mocks/env.ts";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals } from "../../../test/assert.ts";
 import { buildFactPage, FACTS } from "./facts.ts";
 import { EmbedColors } from "../../constants.ts";
 

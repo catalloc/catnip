@@ -1,5 +1,5 @@
 import "../../../test/_mocks/env.ts";
-import { assertEquals, assert } from "@std/assert";
+import { assertEquals, assert } from "../../../test/assert.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
 import { kv } from "../../persistence/kv.ts";
 import type { Reminder } from "./remind.ts";

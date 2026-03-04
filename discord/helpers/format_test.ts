@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../test/assert.ts";
 import { formatPermissionInfo, discordTimestamp } from "./format.ts";
 
 // ── formatPermissionInfo ──

@@ -1,5 +1,5 @@
 import "../../../test/_mocks/env.ts";
-import { assertEquals, assert, assertNotStrictEquals } from "@std/assert";
+import { assertEquals, assert, assertNotStrictEquals } from "../../../test/assert.ts";
 import { sqlite } from "https://esm.town/v/std/sqlite/main.ts";
 import { kv } from "../../persistence/kv.ts";
 import { mockFetch, restoreFetch } from "../../../test/_mocks/fetch.ts";

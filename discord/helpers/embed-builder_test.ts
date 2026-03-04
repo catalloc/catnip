@@ -1,5 +1,5 @@
 import "../../test/_mocks/env.ts";
-import { assertEquals, assertNotStrictEquals } from "@std/assert";
+import { assertEquals, assertNotStrictEquals } from "../../test/assert.ts";
 import { EmbedBuilder, embed } from "./embed-builder.ts";
 import { EmbedColors } from "../constants.ts";
 

@@ -1,5 +1,5 @@
 import "../../test/_mocks/env.ts";
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../test/assert.ts";
 import { _internals } from "./handler.ts";
 
 const {

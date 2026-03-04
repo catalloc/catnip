@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../test/assert.ts";
 import { isValidPublicUrl } from "./url.ts";
 
 Deno.test("isValidPublicUrl: accepts valid https URL", () => {

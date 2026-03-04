@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../../test/assert.ts";
 import { defineVerifier, MetadataType } from "./define-verifier.ts";
 
 Deno.test("defineVerifier: passes through input unchanged", () => {

@@ -1,5 +1,5 @@
 import "../../test/_mocks/env.ts";
-import { assertEquals, assert } from "@std/assert";
+import { assertEquals, assert } from "../../test/assert.ts";
 import { mockFetch, getCalls, restoreFetch } from "../../test/_mocks/fetch.ts";
 import {
   setVerifier,

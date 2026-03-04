@@ -1,5 +1,5 @@
 import "../../../test/_mocks/env.ts";
-import { assertEquals, assert, assertStringIncludes } from "@std/assert";
+import { assertEquals, assert, assertStringIncludes } from "../../../test/assert.ts";
 import { mockFetch, getCalls, restoreFetch } from "../../../test/_mocks/fetch.ts";
 import r from "./r.ts";
 

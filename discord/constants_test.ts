@@ -1,6 +1,6 @@
 import "../test/_mocks/env.ts";
 import "../test/_mocks/sqlite.ts";
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "../test/assert.ts";
 import { CONFIG, isGuildAdmin } from "./constants.ts";
 import { guildConfig } from "./persistence/guild-config.ts";
 

@@ -1,4 +1,4 @@
-import { assertEquals, assertInstanceOf } from "@std/assert";
+import { assertEquals, assertInstanceOf } from "../../test/assert.ts";
 import { UserFacingError } from "./errors.ts";
 
 Deno.test("UserFacingError: userMessage only", () => {

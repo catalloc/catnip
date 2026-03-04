@@ -1,7 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/denoland/deno/348900b8b79f4a434cab4c74b3bc8d4d2fa8ee74/cli/schemas/config-file.v1.json",
   "imports": {
-    "@std/assert": "jsr:@std/assert",
     "https://esm.town/v/std/sqlite/main.ts": "./test/_mocks/sqlite.ts",
     "https://esm.town/v/std/utils@85-main/index.ts": "./test/_mocks/val-utils.ts",
     "https://esm.town/v/std/blob": "./test/_mocks/blob.ts"

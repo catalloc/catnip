@@ -1,5 +1,5 @@
 import "../../../test/_mocks/env.ts";
-import { assertEquals, assert } from "@std/assert";
+import { assertEquals, assert } from "../../../test/assert.ts";
 import { blob } from "../../../test/_mocks/blob.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
 import { kv } from "../../persistence/kv.ts";

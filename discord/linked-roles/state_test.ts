@@ -1,5 +1,5 @@
 import "../../test/_mocks/env.ts";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals } from "../../test/assert.ts";
 import { generateState, verifyState, _internals } from "./state.ts";
 
 const { toBase64Url, fromBase64Url } = _internals;

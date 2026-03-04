@@ -1,4 +1,4 @@
-import { assertEquals, assert } from "@std/assert";
+import { assertEquals, assert } from "../../test/assert.ts";
 import { ExpiringCache } from "./cache.ts";
 
 Deno.test("cache get/set: stores and retrieves values", () => {

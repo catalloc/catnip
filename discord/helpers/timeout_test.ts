@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "../../test/assert.ts";
 import { withTimeout } from "./timeout.ts";
 
 Deno.test("withTimeout: resolving promise returns value", async () => {

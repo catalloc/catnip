@@ -1,4 +1,4 @@
-import { assertEquals, assert } from "@std/assert";
+import { assertEquals, assert } from "../../test/assert.ts";
 import { timingSafeEqual, secureRandomIndex } from "./crypto.ts";
 
 // --- timingSafeEqual ---

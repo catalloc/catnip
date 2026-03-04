@@ -1,5 +1,5 @@
 import "../../../test/_mocks/env.ts";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals } from "../../../test/assert.ts";
 import { pollKey, buildPollComponents, buildPollEmbed } from "./poll.ts";
 import type { PollConfig } from "./poll.ts";
 import { EmbedColors } from "../../constants.ts";
