@@ -3,11 +3,12 @@ import { assertEquals, assert } from "../../../test/assert.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
 import { jobs } from "../../economy/jobs.ts";
 import { accounts } from "../../economy/accounts.ts";
-import { economyConfig } from "../../economy/economy-config.ts";
+import { economyConfig, _internals as economyConfigInternals } from "../../economy/economy-config.ts";
 import command from "./job.ts";
 
 function resetStore() {
   (sqlite as any)._reset();
+  economyConfigInternals.configCache.clear();
 }
 
 const guildId = "g1";

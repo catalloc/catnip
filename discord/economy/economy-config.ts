@@ -35,16 +35,26 @@ function createDefault(guildId: string): EconomyGuildConfig {
   };
 }
 
+// In-isolate cache with 60-second TTL
+const CACHE_TTL_MS = 60_000;
+const configCache = new Map<string, { config: EconomyGuildConfig; expires: number }>();
+
 export const economyConfig = {
   async get(guildId: string): Promise<EconomyGuildConfig> {
+    const cached = configCache.get(guildId);
+    if (cached && cached.expires > Date.now()) return cached.config;
+
     const existing = await kv.get<EconomyGuildConfig>(configKey(guildId));
-    return existing ?? createDefault(guildId);
+    const config = existing ?? createDefault(guildId);
+    configCache.set(guildId, { config, expires: Date.now() + CACHE_TTL_MS });
+    return config;
   },
 
   async update(
     guildId: string,
     changes: Partial<Omit<EconomyGuildConfig, "guildId" | "createdAt" | "updatedAt">>,
   ): Promise<EconomyGuildConfig> {
+    configCache.delete(guildId);
     return await kv.update<EconomyGuildConfig>(configKey(guildId), (current) => {
       const config = current ?? createDefault(guildId);
       Object.assign(config, changes);
@@ -54,10 +64,11 @@ export const economyConfig = {
   },
 
   async reset(guildId: string): Promise<EconomyGuildConfig> {
+    configCache.delete(guildId);
     const config = createDefault(guildId);
     await kv.set(configKey(guildId), config);
     return config;
   },
 };
 
-export const _internals = { configKey, createDefault };
+export const _internals = { configKey, createDefault, configCache, CACHE_TTL_MS };

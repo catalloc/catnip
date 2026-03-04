@@ -156,8 +156,18 @@ export default defineCommand({
 
     if (sub === "setup") {
       const changes: Record<string, any> = {};
-      if (options?.["currency-name"] != null) changes.currencyName = options["currency-name"];
-      if (options?.["currency-emoji"] != null) changes.currencyEmoji = options["currency-emoji"];
+      if (options?.["currency-name"] != null) {
+        const name = String(options["currency-name"]).replace(/[`\\*_~|<>]/g, "").trim();
+        if (name.length === 0) return { success: false, error: "Currency name cannot be empty." };
+        if (name.length > 32) return { success: false, error: "Currency name must be 32 characters or fewer." };
+        changes.currencyName = name;
+      }
+      if (options?.["currency-emoji"] != null) {
+        const emoji = String(options["currency-emoji"]).trim();
+        if (emoji.length === 0) return { success: false, error: "Currency emoji cannot be empty." };
+        if (emoji.length > 64) return { success: false, error: "Currency emoji must be 64 characters or fewer." };
+        changes.currencyEmoji = emoji;
+      }
       if (options?.["starting-balance"] != null) {
         if (options["starting-balance"] < 0) return { success: false, error: "Starting balance cannot be negative." };
         changes.startingBalance = options["starting-balance"];

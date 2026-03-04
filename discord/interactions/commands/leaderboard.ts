@@ -44,14 +44,8 @@ export default defineCommand({
     const start = (safePage - 1) * PAGE_SIZE;
     const pageAccounts = allAccounts.slice(start, start + PAGE_SIZE);
 
-    // Fetch levels for users on this page
-    const levelMap = new Map<string, number>();
-    await Promise.all(
-      pageAccounts.map(async (a) => {
-        const level = await xp.getLevel(guildId, a.userId);
-        levelMap.set(a.userId, level);
-      }),
-    );
+    // Batch-fetch levels for users on this page (avoids N+1 queries)
+    const levelMap = await xp.getLevels(guildId, pageAccounts.map((a) => a.userId));
 
     const lines = pageAccounts.map((a, i) => {
       const rank = start + i + 1;

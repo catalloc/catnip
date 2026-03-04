@@ -5,6 +5,7 @@ import { economyConfig, _internals } from "./economy-config.ts";
 
 function resetStore() {
   (sqlite as any)._reset();
+  _internals.configCache.clear();
 }
 
 Deno.test("economyConfig _internals.configKey: correct format", () => {

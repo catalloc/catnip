@@ -2,13 +2,14 @@ import "../../../test/_mocks/env.ts";
 import { assertEquals, assert } from "../../../test/assert.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
 import { accounts } from "../../economy/accounts.ts";
-import { economyConfig } from "../../economy/economy-config.ts";
+import { economyConfig, _internals as economyConfigInternals } from "../../economy/economy-config.ts";
 import { xp } from "../../economy/xp.ts";
 import { idleActions, FARM_TIERS } from "../../economy/idle-actions.ts";
 import command from "./farm.ts";
 
 function resetStore() {
   (sqlite as any)._reset();
+  economyConfigInternals.configCache.clear();
 }
 
 const guildId = "g1";

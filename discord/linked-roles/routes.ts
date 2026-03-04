@@ -34,10 +34,10 @@ export function getVerifier(): Verifier | null {
 // Route helpers
 // ---------------------------------------------------------------------------
 
-/** Derive the callback URL from the incoming request's origin. */
+/** Derive the callback URL, preferring BOT_URL if set. */
 function getRedirectUri(requestUrl: string): string {
-  const url = new URL(requestUrl);
-  return `${url.origin}/linked-roles/callback`;
+  const origin = CONFIG.botUrl ?? new URL(requestUrl).origin;
+  return `${origin}/linked-roles/callback`;
 }
 
 // ---------------------------------------------------------------------------

@@ -44,7 +44,8 @@ export async function exchangeCode(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Token exchange failed (${res.status}): ${text}`);
+    console.error(`Token exchange failed (${res.status}): ${text}`);
+    throw new Error(`Token exchange failed (${res.status})`);
   }
   return res.json();
 }
@@ -60,7 +61,8 @@ export async function fetchUser(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Fetch user failed (${res.status}): ${text}`);
+    console.error(`Fetch user failed (${res.status}): ${text}`);
+    throw new Error(`Fetch user failed (${res.status})`);
   }
   return res.json();
 }
@@ -85,7 +87,8 @@ export async function fetchConnections(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Fetch connections failed (${res.status}): ${text}`);
+    console.error(`Fetch connections failed (${res.status}): ${text}`);
+    throw new Error(`Fetch connections failed (${res.status})`);
   }
   return res.json();
 }
@@ -114,6 +117,7 @@ export async function pushMetadata(
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Push metadata failed (${res.status}): ${text}`);
+    console.error(`Push metadata failed (${res.status}): ${text}`);
+    throw new Error(`Push metadata failed (${res.status})`);
   }
 }

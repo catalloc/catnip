@@ -87,6 +87,10 @@ function xpKey(guildId: string, userId: string): string {
   return `xp:${guildId}:${userId}`;
 }
 
+function xpPrefix(guildId: string): string {
+  return `xp:${guildId}:`;
+}
+
 function createDefault(guildId: string, userId: string): XpState {
   const now = Date.now();
   return {
@@ -122,6 +126,24 @@ export const xp = {
   },
 
   /**
+   * Batch-fetch levels for multiple users. Returns a Map<userId, level>.
+   * Users without XP state default to level 0.
+   */
+  async getLevels(guildId: string, userIds: string[]): Promise<Map<string, number>> {
+    const entries = await kv.list(xpPrefix(guildId));
+    const stateMap = new Map<string, XpState>();
+    for (const e of entries) {
+      const s = e.value as XpState;
+      if (s?.userId) stateMap.set(s.userId, s);
+    }
+    const result = new Map<string, number>();
+    for (const uid of userIds) {
+      result.set(uid, stateMap.get(uid)?.level ?? 0);
+    }
+    return result;
+  },
+
+  /**
    * Grant XP to a user. Recomputes level. Returns grant result with levelsGained.
    */
   async grantXp(guildId: string, userId: string, amount: number): Promise<XpGrantResult> {
@@ -145,4 +167,4 @@ export const xp = {
   },
 };
 
-export const _internals = { xpKey, createDefault };
+export const _internals = { xpKey, xpPrefix, createDefault };

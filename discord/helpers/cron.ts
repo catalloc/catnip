@@ -29,7 +29,11 @@ export async function runCron(opts: CronOpts): Promise<void> {
     );
 
     if (entries.length > 0) {
+      const maxDue = opts.maxDue ?? 100;
       logger.info(`Run complete: ${entries.length} item(s) processed in ${Date.now() - start}ms`);
+      if (entries.length >= maxDue) {
+        logger.warn(`Processed ${maxDue} items (max) — more may be pending for next run`);
+      }
     }
   } catch (err) {
     logger.error("Cron run failed:", err);

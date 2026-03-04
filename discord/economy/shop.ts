@@ -41,7 +41,7 @@ export const shop = {
       }
       newItem = {
         ...item,
-        id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id: `item_${crypto.randomUUID()}`,
         enabled: true,
       };
       catalog.items.push(newItem);

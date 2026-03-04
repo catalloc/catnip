@@ -24,6 +24,7 @@ export const CONFIG = {
   get clientSecret() { return Deno.env.get("DISCORD_CLIENT_SECRET") ?? null; },
   get adminPassword() { return Deno.env.get("ADMIN_PASSWORD") ?? null; },
   get steamApiKey() { return Deno.env.get("STEAM_API_KEY") ?? null; },
+  get botUrl() { return Deno.env.get("BOT_URL") ?? null; },
   get patreonWebhookSecret() { return Deno.env.get("PATREON_WEBHOOK_SECRET") ?? null; },
   get feedbackWebhook() { return Deno.env.get("FEEDBACK_WEBHOOK") ?? null; },
   get twitchClientId() { return Deno.env.get("TWITCH_CLIENT_ID") ?? null; },
