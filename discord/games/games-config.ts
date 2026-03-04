@@ -1,17 +1,17 @@
 /**
- * discord/economy/economy-config.ts
+ * discord/games/games-config.ts
  *
- * Per-guild economy settings, stored separately from GuildConfig.
+ * Per-guild games settings, stored separately from GuildConfig.
  */
 
 import { kv } from "../persistence/kv.ts";
-import type { EconomyGuildConfig } from "./types.ts";
+import type { GamesGuildConfig } from "./types.ts";
 
 function configKey(guildId: string): string {
   return `economy_config:${guildId}`;
 }
 
-function createDefault(guildId: string): EconomyGuildConfig {
+function createDefault(guildId: string): GamesGuildConfig {
   const now = Date.now();
   return {
     guildId,
@@ -20,15 +20,6 @@ function createDefault(guildId: string): EconomyGuildConfig {
     casinoEnabled: true,
     casinoMaxBet: 10000,
     casinoMinBet: 1,
-    jobsEnabled: true,
-    crimeEnabled: true,
-    crimeFineEnabled: true,
-    farmEnabled: true,
-    mineEnabled: true,
-    forageEnabled: true,
-    trainEnabled: true,
-    arenaEnabled: true,
-    adventureEnabled: true,
     startingBalance: 0,
     createdAt: now,
     updatedAt: now,
@@ -37,14 +28,14 @@ function createDefault(guildId: string): EconomyGuildConfig {
 
 // In-isolate cache with 60-second TTL
 const CACHE_TTL_MS = 60_000;
-const configCache = new Map<string, { config: EconomyGuildConfig; expires: number }>();
+const configCache = new Map<string, { config: GamesGuildConfig; expires: number }>();
 
-export const economyConfig = {
-  async get(guildId: string): Promise<EconomyGuildConfig> {
+export const gamesConfig = {
+  async get(guildId: string): Promise<GamesGuildConfig> {
     const cached = configCache.get(guildId);
     if (cached && cached.expires > Date.now()) return cached.config;
 
-    const existing = await kv.get<EconomyGuildConfig>(configKey(guildId));
+    const existing = await kv.get<GamesGuildConfig>(configKey(guildId));
     const config = existing ?? createDefault(guildId);
     configCache.set(guildId, { config, expires: Date.now() + CACHE_TTL_MS });
     return config;
@@ -52,10 +43,10 @@ export const economyConfig = {
 
   async update(
     guildId: string,
-    changes: Partial<Omit<EconomyGuildConfig, "guildId" | "createdAt" | "updatedAt">>,
-  ): Promise<EconomyGuildConfig> {
+    changes: Partial<Omit<GamesGuildConfig, "guildId" | "createdAt" | "updatedAt">>,
+  ): Promise<GamesGuildConfig> {
     configCache.delete(guildId);
-    return await kv.update<EconomyGuildConfig>(configKey(guildId), (current) => {
+    return await kv.update<GamesGuildConfig>(configKey(guildId), (current) => {
       const config = current ?? createDefault(guildId);
       Object.assign(config, changes);
       config.updatedAt = Date.now();
@@ -63,7 +54,7 @@ export const economyConfig = {
     });
   },
 
-  async reset(guildId: string): Promise<EconomyGuildConfig> {
+  async reset(guildId: string): Promise<GamesGuildConfig> {
     configCache.delete(guildId);
     const config = createDefault(guildId);
     await kv.set(configKey(guildId), config);

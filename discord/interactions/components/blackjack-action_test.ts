@@ -1,8 +1,8 @@
 import "../../../test/_mocks/env.ts";
 import { assertEquals, assert } from "../../../test/assert.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
-import { accounts } from "../../economy/accounts.ts";
-import { blackjack } from "../../economy/casino/blackjack.ts";
+import { accounts } from "../../games/accounts.ts";
+import { blackjack } from "../../games/casino/blackjack.ts";
 import component from "./blackjack-action.ts";
 
 function resetStore() {

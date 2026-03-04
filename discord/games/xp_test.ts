@@ -79,8 +79,6 @@ Deno.test("makeXpBar: partially filled", () => {
 });
 
 Deno.test("XP_AWARDS: has expected keys", () => {
-  assert(XP_AWARDS.JOB_COLLECT_PER_HOUR > 0);
-  assert(XP_AWARDS.CRIME_SUCCESS_MIN > 0);
   assert(XP_AWARDS.CASINO_WIN > 0);
   assert(XP_AWARDS.CASINO_LOSS > 0);
 });

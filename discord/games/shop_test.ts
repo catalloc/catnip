@@ -3,7 +3,6 @@ import { assertEquals, assert } from "../../test/assert.ts";
 import { sqlite } from "../../test/_mocks/sqlite.ts";
 import { mockFetch, restoreFetch } from "../../test/_mocks/fetch.ts";
 import { accounts } from "./accounts.ts";
-import { jobs } from "./jobs.ts";
 import { shop, _internals } from "./shop.ts";
 
 function resetStore() {
@@ -26,13 +25,13 @@ Deno.test("shop getCatalog: returns empty for new guild", async () => {
 Deno.test("shop addItem: adds item", async () => {
   resetStore();
   const result = await shop.addItem(guildId, {
-    name: "Burger Flipper Job", price: 100,
-    description: "Upgrade to Burger Flipper", type: "job-upgrade",
-    unlocksJobTier: "burger-flipper",
+    name: "VIP Badge", price: 100,
+    description: "A shiny badge", type: "profile-badge",
+    profileBadge: ":star:",
   });
   assertEquals(result.success, true);
   assert(result.item);
-  assertEquals(result.item!.name, "Burger Flipper Job");
+  assertEquals(result.item!.name, "VIP Badge");
   assertEquals(result.item!.enabled, true);
 });
 
@@ -51,20 +50,17 @@ Deno.test("shop removeItem: returns false for nonexistent", async () => {
   assertEquals(removed, false);
 });
 
-Deno.test("shop buyItem: job upgrade succeeds", async () => {
+Deno.test("shop buyItem: custom item succeeds", async () => {
   resetStore();
   const { item } = await shop.addItem(guildId, {
-    name: "Burger Flipper", price: 100,
-    description: "upgrade", type: "job-upgrade",
-    unlocksJobTier: "burger-flipper",
+    name: "Cool Hat", price: 100,
+    description: "a hat", type: "custom",
   });
   await accounts.creditBalance(guildId, userId, 200);
   const result = await shop.buyItem(guildId, userId, item!.id);
   assertEquals(result.success, true);
   const account = await accounts.getAccount(guildId, userId);
   assertEquals(account?.balance, 100);
-  const jobState = await jobs.getJobState(guildId, userId);
-  assertEquals(jobState?.tierId, "burger-flipper");
 });
 
 Deno.test("shop buyItem: fails with insufficient funds", async () => {
@@ -74,24 +70,6 @@ Deno.test("shop buyItem: fails with insufficient funds", async () => {
   const result = await shop.buyItem(guildId, userId, item!.id);
   assertEquals(result.success, false);
   assert(result.error?.includes("Insufficient"));
-});
-
-Deno.test("shop buyItem: refunds if already have tier", async () => {
-  resetStore();
-  const { item } = await shop.addItem(guildId, {
-    name: "Burger Flipper", price: 100,
-    description: "upgrade", type: "job-upgrade",
-    unlocksJobTier: "burger-flipper",
-  });
-  await accounts.creditBalance(guildId, userId, 200);
-  await jobs.getOrCreate(guildId, userId);
-  await jobs.setTier(guildId, userId, "chef"); // higher tier
-  const result = await shop.buyItem(guildId, userId, item!.id);
-  assertEquals(result.success, false);
-  assert(result.error?.includes("already have"));
-  // Balance should be unchanged (refunded)
-  const account = await accounts.getAccount(guildId, userId);
-  assertEquals(account?.balance, 200);
 });
 
 Deno.test("shop buyItem: cosmetic role grants role via API", async () => {

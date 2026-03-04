@@ -1,7 +1,7 @@
 import "../../../test/_mocks/env.ts";
 import { assertEquals, assert } from "../../../test/assert.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
-import { accounts } from "../../economy/accounts.ts";
+import { accounts } from "../../games/accounts.ts";
 import command from "./balance.ts";
 
 function resetStore() {

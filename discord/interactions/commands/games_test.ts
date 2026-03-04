@@ -1,21 +1,21 @@
 import "../../../test/_mocks/env.ts";
 import { assertEquals, assert } from "../../../test/assert.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
-import { accounts } from "../../economy/accounts.ts";
-import { economyConfig, _internals as economyConfigInternals } from "../../economy/economy-config.ts";
-import command from "./casino.ts";
+import { accounts } from "../../games/accounts.ts";
+import { gamesConfig, _internals as gamesConfigInternals } from "../../games/games-config.ts";
+import command from "./games.ts";
 
 function resetStore() {
   (sqlite as any)._reset();
-  economyConfigInternals.configCache.clear();
+  gamesConfigInternals.configCache.clear();
 }
 
 const guildId = "g1";
 const userId = "u1";
 
-Deno.test("casino: disabled when casino off", async () => {
+Deno.test("games: disabled when casino off", async () => {
   resetStore();
-  await economyConfig.update(guildId, { casinoEnabled: false });
+  await gamesConfig.update(guildId, { casinoEnabled: false });
   const result = await command.execute({
     guildId, userId, options: { subcommand: "coinflip", bet: 10, call: "heads" }, config: {},
   } as any);
@@ -23,7 +23,7 @@ Deno.test("casino: disabled when casino off", async () => {
   assert(result.error?.includes("closed"));
 });
 
-Deno.test("casino coinflip: fails with insufficient funds", async () => {
+Deno.test("games coinflip: fails with insufficient funds", async () => {
   resetStore();
   const result = await command.execute({
     guildId, userId, options: { subcommand: "coinflip", bet: 100, call: "heads" }, config: {},
@@ -31,7 +31,7 @@ Deno.test("casino coinflip: fails with insufficient funds", async () => {
   assertEquals(result.success, false);
 });
 
-Deno.test("casino coinflip: plays game with sufficient funds", async () => {
+Deno.test("games coinflip: plays game with sufficient funds", async () => {
   resetStore();
   await accounts.creditBalance(guildId, userId, 1000);
   const result = await command.execute({
@@ -42,7 +42,7 @@ Deno.test("casino coinflip: plays game with sufficient funds", async () => {
   assert(result.embed.description?.includes("heads") || result.embed.description?.includes("tails"));
 });
 
-Deno.test("casino dice: plays game", async () => {
+Deno.test("games dice: plays game", async () => {
   resetStore();
   await accounts.creditBalance(guildId, userId, 1000);
   const result = await command.execute({
@@ -52,7 +52,7 @@ Deno.test("casino dice: plays game", async () => {
   assert(result.embed);
 });
 
-Deno.test("casino slots: plays game", async () => {
+Deno.test("games slots: plays game", async () => {
   resetStore();
   await accounts.creditBalance(guildId, userId, 1000);
   const result = await command.execute({
@@ -62,7 +62,7 @@ Deno.test("casino slots: plays game", async () => {
   assert(result.embed);
 });
 
-Deno.test("casino roulette: plays color bet", async () => {
+Deno.test("games roulette: plays color bet", async () => {
   resetStore();
   await accounts.creditBalance(guildId, userId, 1000);
   const result = await command.execute({
@@ -72,7 +72,7 @@ Deno.test("casino roulette: plays color bet", async () => {
   assert(result.embed);
 });
 
-Deno.test("casino roulette: invalid number refunds", async () => {
+Deno.test("games roulette: invalid number refunds", async () => {
   resetStore();
   await accounts.creditBalance(guildId, userId, 1000);
   const result = await command.execute({
@@ -85,7 +85,7 @@ Deno.test("casino roulette: invalid number refunds", async () => {
   assertEquals(account?.balance, 1000);
 });
 
-Deno.test("casino blackjack: starts game", async () => {
+Deno.test("games blackjack: starts game", async () => {
   resetStore();
   await accounts.creditBalance(guildId, userId, 1000);
   const result = await command.execute({
@@ -96,7 +96,7 @@ Deno.test("casino blackjack: starts game", async () => {
   // Either has components (active game) or is already finished (natural blackjack)
 });
 
-Deno.test("casino blackjack: rejects second game", async () => {
+Deno.test("games blackjack: rejects second game", async () => {
   resetStore();
   await accounts.creditBalance(guildId, userId, 2000);
   // Start first game
@@ -112,10 +112,10 @@ Deno.test("casino blackjack: rejects second game", async () => {
   assert(typeof result.success === "boolean");
 });
 
-Deno.test("casino: bet below minimum", async () => {
+Deno.test("games: bet below minimum", async () => {
   resetStore();
   await accounts.creditBalance(guildId, userId, 1000);
-  await economyConfig.update(guildId, { casinoMinBet: 10 });
+  await gamesConfig.update(guildId, { casinoMinBet: 10 });
   const result = await command.execute({
     guildId, userId, options: { subcommand: "coinflip", bet: 1, call: "heads" }, config: {},
   } as any);
@@ -123,10 +123,10 @@ Deno.test("casino: bet below minimum", async () => {
   assert(result.error?.includes("Minimum"));
 });
 
-Deno.test("casino: bet above maximum", async () => {
+Deno.test("games: bet above maximum", async () => {
   resetStore();
   await accounts.creditBalance(guildId, userId, 100000);
-  await economyConfig.update(guildId, { casinoMaxBet: 100 });
+  await gamesConfig.update(guildId, { casinoMaxBet: 100 });
   const result = await command.execute({
     guildId, userId, options: { subcommand: "coinflip", bet: 500, call: "heads" }, config: {},
   } as any);
@@ -134,7 +134,7 @@ Deno.test("casino: bet above maximum", async () => {
   assert(result.error?.includes("Maximum"));
 });
 
-Deno.test("casino: invalid subcommand", async () => {
+Deno.test("games: invalid subcommand", async () => {
   resetStore();
   await accounts.creditBalance(guildId, userId, 1000);
   const result = await command.execute({

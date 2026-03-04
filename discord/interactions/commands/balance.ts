@@ -5,8 +5,8 @@
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
-import { accounts } from "../../economy/accounts.ts";
-import { economyConfig } from "../../economy/economy-config.ts";
+import { accounts } from "../../games/accounts.ts";
+import { gamesConfig } from "../../games/games-config.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors } from "../../constants.ts";
 
@@ -30,7 +30,7 @@ export default defineCommand({
   async execute({ guildId, userId, options }) {
     const targetId = (options?.user as string) ?? userId;
     const isSelf = targetId === userId;
-    const config = await economyConfig.get(guildId);
+    const config = await gamesConfig.get(guildId);
     const account = await accounts.getOrCreate(guildId, targetId, config.startingBalance);
 
     const e = embed()

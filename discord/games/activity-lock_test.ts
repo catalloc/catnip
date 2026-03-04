@@ -13,17 +13,16 @@ Deno.test("_internals.lockKey: correct format", () => {
 
 Deno.test("acquireLock: succeeds when no lock exists", async () => {
   resetStore();
-  const result = await activityLock.acquireLock("g1", "u1", "farm", "Wheat");
+  const result = await activityLock.acquireLock("g1", "u1", "blackjack");
   assertEquals(result.success, true);
 });
 
 Deno.test("acquireLock: rejects when unexpired lock exists", async () => {
   resetStore();
-  await activityLock.acquireLock("g1", "u1", "farm", "Wheat");
-  const result = await activityLock.acquireLock("g1", "u1", "mine");
+  await activityLock.acquireLock("g1", "u1", "blackjack");
+  const result = await activityLock.acquireLock("g1", "u1", "blackjack");
   assertEquals(result.success, false);
-  assert(result.error?.includes("farming"));
-  assert(result.error?.includes("Wheat"));
+  assert(result.error?.includes("blackjack"));
 });
 
 Deno.test("acquireLock: allows after lock expires", async () => {
@@ -31,15 +30,15 @@ Deno.test("acquireLock: allows after lock expires", async () => {
   const now = 1000000;
   await activityLock.acquireLock("g1", "u1", "blackjack", undefined, now + 100, now);
   // Lock expired
-  const result = await activityLock.acquireLock("g1", "u1", "farm", "Wheat", undefined, now + 200);
+  const result = await activityLock.acquireLock("g1", "u1", "blackjack", undefined, undefined, now + 200);
   assertEquals(result.success, true);
 });
 
 Deno.test("acquireLock: allows after release", async () => {
   resetStore();
-  await activityLock.acquireLock("g1", "u1", "farm", "Wheat");
+  await activityLock.acquireLock("g1", "u1", "blackjack");
   await activityLock.releaseLock("g1", "u1");
-  const result = await activityLock.acquireLock("g1", "u1", "mine");
+  const result = await activityLock.acquireLock("g1", "u1", "blackjack");
   assertEquals(result.success, true);
 });
 
@@ -51,10 +50,10 @@ Deno.test("requireNoActivity: allowed when no lock", async () => {
 
 Deno.test("requireNoActivity: blocked when lock active", async () => {
   resetStore();
-  await activityLock.acquireLock("g1", "u1", "train");
+  await activityLock.acquireLock("g1", "u1", "blackjack");
   const result = await activityLock.requireNoActivity("g1", "u1");
   assertEquals(result.allowed, false);
-  assert(result.error?.includes("training"));
+  assert(result.error?.includes("blackjack"));
 });
 
 Deno.test("requireNoActivity: allowed when lock expired", async () => {
@@ -68,10 +67,9 @@ Deno.test("requireNoActivity: allowed when lock expired", async () => {
 Deno.test("getCurrentActivity: returns lock when active", async () => {
   resetStore();
   const now = 1000000;
-  await activityLock.acquireLock("g1", "u1", "arena", "Goblin", undefined, now);
+  await activityLock.acquireLock("g1", "u1", "blackjack", undefined, undefined, now);
   const lock = await activityLock.getCurrentActivity("g1", "u1", now + 1000);
-  assertEquals(lock?.activityType, "arena");
-  assertEquals(lock?.details, "Goblin");
+  assertEquals(lock?.activityType, "blackjack");
 });
 
 Deno.test("getCurrentActivity: returns null when no lock", async () => {
@@ -90,16 +88,16 @@ Deno.test("getCurrentActivity: returns null and cleans expired lock", async () =
 
 Deno.test("acquireLock: different users don't conflict", async () => {
   resetStore();
-  const r1 = await activityLock.acquireLock("g1", "u1", "farm");
-  const r2 = await activityLock.acquireLock("g1", "u2", "mine");
+  const r1 = await activityLock.acquireLock("g1", "u1", "blackjack");
+  const r2 = await activityLock.acquireLock("g1", "u2", "blackjack");
   assertEquals(r1.success, true);
   assertEquals(r2.success, true);
 });
 
 Deno.test("acquireLock: same user different guilds don't conflict", async () => {
   resetStore();
-  const r1 = await activityLock.acquireLock("g1", "u1", "farm");
-  const r2 = await activityLock.acquireLock("g2", "u1", "mine");
+  const r1 = await activityLock.acquireLock("g1", "u1", "blackjack");
+  const r2 = await activityLock.acquireLock("g2", "u1", "blackjack");
   assertEquals(r1.success, true);
   assertEquals(r2.success, true);
 });

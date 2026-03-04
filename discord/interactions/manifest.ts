@@ -36,23 +36,16 @@ export { default as tag } from "./commands/tag.ts";
 export { default as template } from "./commands/template.ts";
 export { default as ticket } from "./commands/ticket.ts";
 export { default as userInfo } from "./commands/user-info.ts";
+export { default as scratchpost } from "./commands/scratchpost.ts";
 
-// Economy Commands
+// Games Commands
 export { default as balance } from "./commands/balance.ts";
-export { default as farm } from "./commands/farm.ts";
-export { default as forage } from "./commands/forage.ts";
-export { default as mine } from "./commands/mine.ts";
 export { default as profile } from "./commands/profile.ts";
-export { default as casino } from "./commands/casino.ts";
-export { default as crime } from "./commands/crime.ts";
-export { default as economy } from "./commands/economy.ts";
+export { default as games } from "./commands/games.ts";
+export { default as gamesConfig } from "./commands/games-admin.ts";
 export { default as give } from "./commands/give.ts";
-export { default as job } from "./commands/job.ts";
 export { default as leaderboard } from "./commands/leaderboard.ts";
 export { default as shop } from "./commands/shop.ts";
-export { default as train } from "./commands/train.ts";
-export { default as arenaCmd } from "./commands/arena.ts";
-export { default as adventureCmd } from "./commands/adventure.ts";
 
 // Components
 export { default as colorSelect } from "./components/color-select.ts";
@@ -69,5 +62,4 @@ export { default as ticketClose } from "./components/ticket-close.ts";
 export { default as templateModal } from "./components/template-modal.ts";
 export { default as ticketCloseModal } from "./components/ticket-close-modal.ts";
 export { default as blackjackAction } from "./components/blackjack-action.ts";
-export { default as arenaAction } from "./components/arena-action.ts";
-export { default as adventureAction } from "./components/adventure-action.ts";
+export { default as scratchpostScratch } from "./components/scratchpost-scratch.ts";

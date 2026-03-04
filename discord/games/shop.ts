@@ -1,17 +1,14 @@
 /**
- * discord/economy/shop.ts
+ * discord/games/shop.ts
  *
  * Shop catalog CRUD and purchase logic.
  */
 
 import { kv } from "../persistence/kv.ts";
 import { accounts } from "./accounts.ts";
-import { jobs, getTierIndex } from "./jobs.ts";
 import { profile } from "./profile.ts";
-import { training } from "./training.ts";
-import { inventory } from "./inventory.ts";
 import { discordBotFetch } from "../discord-api.ts";
-import type { ShopItem, ShopCatalog, JobTierId } from "./types.ts";
+import type { ShopItem, ShopCatalog } from "./types.ts";
 
 const MAX_SHOP_ITEMS = 50;
 
@@ -96,18 +93,6 @@ export const shop = {
     }
 
     // Apply item effects
-    if (item.type === "job-upgrade" && item.unlocksJobTier) {
-      const currentJob = await jobs.getOrCreate(guildId, userId);
-      const currentIdx = getTierIndex(currentJob.tierId);
-      const targetIdx = getTierIndex(item.unlocksJobTier);
-      if (targetIdx <= currentIdx) {
-        // Refund — already have this tier or better
-        await accounts.creditBalance(guildId, userId, item.price);
-        return { success: false, error: "You already have this job tier or better!" };
-      }
-      await jobs.setTier(guildId, userId, item.unlocksJobTier);
-    }
-
     if (item.type === "cosmetic-role" && item.roleId) {
       await discordBotFetch("PUT", `guilds/${guildId}/members/${userId}/roles/${item.roleId}`);
     }
@@ -122,18 +107,6 @@ export const shop = {
 
     if (item.type === "profile-border" && item.profileBorderColor != null) {
       await profile.setBorderColor(guildId, userId, item.profileBorderColor);
-    }
-
-    if (item.type === "weapon" && item.weaponId) {
-      await training.equipWeapon(guildId, userId, item.weaponId);
-    }
-
-    if (item.type === "carry-limit-upgrade" && item.carryLimitValue) {
-      const upgradeResult = await inventory.upgradeCarryLimit(guildId, userId, item.carryLimitValue);
-      if (!upgradeResult.success) {
-        await accounts.creditBalance(guildId, userId, item.price);
-        return { success: false, error: upgradeResult.error };
-      }
     }
 
     return { success: true, item };

@@ -1,22 +1,22 @@
 /**
- * Casino Command — Play casino games: slots, coinflip, dice, roulette, blackjack
+ * Games Command — Play casino games: slots, coinflip, dice, roulette, blackjack
  *
- * File: discord/interactions/commands/casino.ts
+ * File: discord/interactions/commands/games.ts
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
-import { accounts } from "../../economy/accounts.ts";
-import { economyConfig } from "../../economy/economy-config.ts";
-import { activityLock } from "../../economy/activity-lock.ts";
-import { playCoinflip } from "../../economy/casino/coinflip.ts";
-import { playDice } from "../../economy/casino/dice.ts";
-import { playSlots } from "../../economy/casino/slots.ts";
-import { playRoulette } from "../../economy/casino/roulette.ts";
+import { accounts } from "../../games/accounts.ts";
+import { gamesConfig } from "../../games/games-config.ts";
+import { activityLock } from "../../games/activity-lock.ts";
+import { playCoinflip } from "../../games/casino/coinflip.ts";
+import { playDice } from "../../games/casino/dice.ts";
+import { playSlots } from "../../games/casino/slots.ts";
+import { playRoulette } from "../../games/casino/roulette.ts";
 import {
   blackjack, formatHand, handValue, isBlackjack, isBust,
   playDealerHand, determineOutcome, calculatePayout,
-} from "../../economy/casino/blackjack.ts";
-import { xp, XP_AWARDS } from "../../economy/xp.ts";
+} from "../../games/casino/blackjack.ts";
+import { xp, XP_AWARDS } from "../../games/xp.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors } from "../../constants.ts";
 
@@ -36,7 +36,7 @@ function validateBet(bet: number, balance: number, min: number, max: number): st
 }
 
 export default defineCommand({
-  name: "casino",
+  name: "games",
   description: "Play casino games to win or lose coins",
 
   options: [
@@ -112,7 +112,7 @@ export default defineCommand({
 
   async execute({ guildId, userId, options }) {
     const sub = options?.subcommand as string | undefined;
-    const config = await economyConfig.get(guildId);
+    const config = await gamesConfig.get(guildId);
 
     if (!config.casinoEnabled) {
       return { success: false, error: "The casino is closed in this server." };

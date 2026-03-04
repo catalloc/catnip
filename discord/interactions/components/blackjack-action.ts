@@ -5,13 +5,13 @@
  */
 
 import { defineComponent } from "../define-component.ts";
-import { accounts } from "../../economy/accounts.ts";
-import { economyConfig } from "../../economy/economy-config.ts";
-import { activityLock } from "../../economy/activity-lock.ts";
+import { accounts } from "../../games/accounts.ts";
+import { gamesConfig } from "../../games/games-config.ts";
+import { activityLock } from "../../games/activity-lock.ts";
 import {
   blackjack, formatHand, handValue, isBust,
   playDealerHand, determineOutcome, calculatePayout,
-} from "../../economy/casino/blackjack.ts";
+} from "../../games/casino/blackjack.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors } from "../../constants.ts";
 
@@ -63,7 +63,7 @@ export default defineComponent({
       return { success: false, error: "No active blackjack game. Start one with `/casino blackjack`." };
     }
 
-    const config = await economyConfig.get(guildId);
+    const config = await gamesConfig.get(guildId);
 
     if (action === "hit") {
       session.playerHand.push(session.deck.pop()!);

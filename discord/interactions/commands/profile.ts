@@ -1,16 +1,14 @@
 /**
- * Profile Command — View your or another player's character sheet
+ * Profile Command — View your or another player's profile card
  *
  * File: discord/interactions/commands/profile.ts
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
-import { accounts } from "../../economy/accounts.ts";
-import { economyConfig } from "../../economy/economy-config.ts";
-import { xp, makeXpBar } from "../../economy/xp.ts";
-import { jobs, getTierConfig } from "../../economy/jobs.ts";
-import { crimes } from "../../economy/crimes.ts";
-import { profile } from "../../economy/profile.ts";
+import { accounts } from "../../games/accounts.ts";
+import { gamesConfig } from "../../games/games-config.ts";
+import { xp, makeXpBar } from "../../games/xp.ts";
+import { profile } from "../../games/profile.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors } from "../../constants.ts";
 
@@ -33,18 +31,15 @@ export default defineCommand({
 
   async execute({ guildId, userId, options }) {
     const targetId = (options?.user as string) ?? userId;
-    const config = await economyConfig.get(guildId);
+    const config = await gamesConfig.get(guildId);
 
     // Fetch all data in parallel
-    const [account, xpState, jobState, crimeState, profileData] = await Promise.all([
+    const [account, xpState, profileData] = await Promise.all([
       accounts.getOrCreate(guildId, targetId, config.startingBalance),
       xp.getOrCreate(guildId, targetId),
-      jobs.getOrCreate(guildId, targetId),
-      crimes.getState(guildId, targetId),
       profile.getOrCreate(guildId, targetId),
     ]);
 
-    const tier = getTierConfig(jobState.tierId);
     const xpBar = makeXpBar(xpState.xp);
     const borderColor = profileData.borderColor ?? EmbedColors.INFO;
 
@@ -68,16 +63,7 @@ export default defineCommand({
       .description(lines.join("\n"))
       .color(borderColor)
       .field("Balance", `${account.balance.toLocaleString()} ${config.currencyEmoji}`, true)
-      .field("Job", tier.name, true)
       .field("Lifetime Earned", `${account.lifetimeEarned.toLocaleString()} ${config.currencyEmoji}`, true);
-
-    if (crimeState) {
-      e.field(
-        "Crimes",
-        `${crimeState.totalSuccesses}/${crimeState.totalAttempts} successful`,
-        true,
-      );
-    }
 
     if (profileData.badgeIds.length > 0) {
       e.field("Badges", profileData.badgeIds.join(" "), false);

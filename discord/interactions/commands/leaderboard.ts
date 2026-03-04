@@ -5,9 +5,9 @@
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
-import { accounts } from "../../economy/accounts.ts";
-import { economyConfig } from "../../economy/economy-config.ts";
-import { xp } from "../../economy/xp.ts";
+import { accounts } from "../../games/accounts.ts";
+import { gamesConfig } from "../../games/games-config.ts";
+import { xp } from "../../games/xp.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors } from "../../constants.ts";
 
@@ -32,7 +32,7 @@ export default defineCommand({
 
   async execute({ guildId, options }) {
     const page = Math.max(1, (options?.page as number) ?? 1);
-    const config = await economyConfig.get(guildId);
+    const config = await gamesConfig.get(guildId);
     const allAccounts = await accounts.listAccounts(guildId);
 
     if (allAccounts.length === 0) {

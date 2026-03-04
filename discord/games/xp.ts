@@ -1,5 +1,5 @@
 /**
- * discord/economy/xp.ts
+ * discord/games/xp.ts
  *
  * XP & Level system — formulas, state management, and XP award constants.
  */
@@ -13,13 +13,6 @@ export const XP_BASE = 100;
 export const XP_EXPONENT = 1.5;
 
 export const XP_AWARDS = {
-  JOB_COLLECT_PER_HOUR: 5,
-  CRIME_SUCCESS_MIN: 15,
-  CRIME_SUCCESS_MAX: 50,
-  CRIME_FAILURE: 5,
-  IDLE_HARVEST_MIN: 8,
-  IDLE_HARVEST_MAX: 30,
-  IDLE_RARE_BONUS: 25,
   CASINO_WIN: 10,
   CASINO_LOSS: 3,
 } as const;

@@ -1,9 +1,9 @@
 import "../../../test/_mocks/env.ts";
 import { assertEquals, assert } from "../../../test/assert.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
-import { accounts } from "../../economy/accounts.ts";
-import { xp } from "../../economy/xp.ts";
-import { profile } from "../../economy/profile.ts";
+import { accounts } from "../../games/accounts.ts";
+import { xp } from "../../games/xp.ts";
+import { profile } from "../../games/profile.ts";
 import command from "./profile.ts";
 
 function resetStore() {

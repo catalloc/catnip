@@ -5,12 +5,12 @@
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
-import { shop } from "../../economy/shop.ts";
-import { economyConfig } from "../../economy/economy-config.ts";
-import { xp } from "../../economy/xp.ts";
+import { shop } from "../../games/shop.ts";
+import { gamesConfig } from "../../games/games-config.ts";
+import { xp } from "../../games/xp.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors, isGuildAdmin } from "../../constants.ts";
-import type { ShopItemType, JobTierId, WeaponType } from "../../economy/types.ts";
+import type { ShopItemType } from "../../games/types.ts";
 
 export default defineCommand({
   name: "shop",
@@ -44,29 +44,18 @@ export default defineCommand({
         {
           name: "type", description: "Item type", type: OptionTypes.STRING, required: true,
           choices: [
-            { name: "Job Upgrade", value: "job-upgrade" },
             { name: "Cosmetic Role", value: "cosmetic-role" },
             { name: "Custom", value: "custom" },
             { name: "Profile Title", value: "profile-title" },
             { name: "Profile Badge", value: "profile-badge" },
             { name: "Profile Border", value: "profile-border" },
-            { name: "Weapon", value: "weapon" },
-            { name: "Carry Limit Upgrade", value: "carry-limit-upgrade" },
           ],
         },
-        { name: "job-tier", description: "Job tier to unlock (for job-upgrade type)", type: OptionTypes.STRING, required: false },
         { name: "role", description: "Role to grant (for cosmetic-role type)", type: OptionTypes.ROLE, required: false },
         { name: "required-level", description: "Level required to purchase", type: OptionTypes.INTEGER, required: false },
         { name: "title-text", description: "Title text (for profile-title type)", type: OptionTypes.STRING, required: false },
         { name: "badge-emoji", description: "Badge emoji (for profile-badge type)", type: OptionTypes.STRING, required: false },
         { name: "border-color", description: "Border color hex, e.g. FFD700 (for profile-border type)", type: OptionTypes.STRING, required: false },
-        { name: "weapon-id", description: "Weapon ID from /arena weapons (for weapon type)", type: OptionTypes.STRING, required: false },
-        { name: "weapon-damage", description: "Weapon damage value (for weapon type)", type: OptionTypes.INTEGER, required: false },
-        {
-          name: "weapon-type", description: "Weapon type (for weapon type)", type: OptionTypes.STRING, required: false,
-          choices: [{ name: "Sword", value: "sword" }, { name: "Bow", value: "bow" }, { name: "Magic", value: "magic" }],
-        },
-        { name: "carry-limit", description: "New carry limit (for carry-limit-upgrade type)", type: OptionTypes.INTEGER, required: false },
       ],
     },
     {
@@ -86,7 +75,7 @@ export default defineCommand({
 
   async execute({ guildId, userId, options, memberRoles, memberPermissions }) {
     const sub = options?.subcommand as string | undefined;
-    const config = await economyConfig.get(guildId);
+    const config = await gamesConfig.get(guildId);
 
     if (sub === "browse") {
       const items = await shop.getEnabledItems(guildId);
@@ -98,8 +87,7 @@ export default defineCommand({
       const lines = items.map((item, i) => {
         const levelReq = item.requiredLevel ? ` | Lv.${item.requiredLevel}` : "";
         const locked = item.requiredLevel && playerLevel < item.requiredLevel ? " :lock:" : "";
-        const extra = item.type === "job-upgrade" ? ` (unlocks **${item.unlocksJobTier}**)` : "";
-        return `**${i + 1}.** ${item.name}${locked} — **${item.price.toLocaleString()}** ${config.currencyName}${levelReq}${extra}\n> ${item.description}`;
+        return `**${i + 1}.** ${item.name}${locked} — **${item.price.toLocaleString()}** ${config.currencyName}${levelReq}\n> ${item.description}`;
       });
 
       const e = embed()
@@ -150,16 +138,11 @@ export default defineCommand({
       const price = options?.price as number;
       const description = options?.description as string;
       const type = options?.type as ShopItemType;
-      const jobTier = options?.["job-tier"] as JobTierId | undefined;
       const roleId = options?.role as string | undefined;
       const requiredLevel = options?.["required-level"] as number | undefined;
       const titleText = options?.["title-text"] as string | undefined;
       const badgeEmoji = options?.["badge-emoji"] as string | undefined;
       const borderColorHex = options?.["border-color"] as string | undefined;
-      const weaponId = options?.["weapon-id"] as string | undefined;
-      const weaponDamage = options?.["weapon-damage"] as number | undefined;
-      const weaponType = options?.["weapon-type"] as WeaponType | undefined;
-      const carryLimitValue = options?.["carry-limit"] as number | undefined;
 
       if (price < 1) return { success: false, error: "Price must be at least 1." };
 
@@ -171,16 +154,11 @@ export default defineCommand({
 
       const result = await shop.addItem(guildId, {
         name, price, description, type,
-        unlocksJobTier: jobTier,
         roleId,
         requiredLevel,
         profileTitle: titleText,
         profileBadge: badgeEmoji,
         profileBorderColor,
-        weaponId,
-        weaponDamage,
-        weaponType,
-        carryLimitValue,
       });
 
       if (!result.success) return { success: false, error: result.error };

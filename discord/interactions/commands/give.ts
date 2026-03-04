@@ -5,8 +5,8 @@
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
-import { accounts } from "../../economy/accounts.ts";
-import { economyConfig } from "../../economy/economy-config.ts";
+import { accounts } from "../../games/accounts.ts";
+import { gamesConfig } from "../../games/games-config.ts";
 
 export default defineCommand({
   name: "give",
@@ -42,7 +42,7 @@ export default defineCommand({
     const targetId = options?.user as string;
     const amount = options?.amount as number;
     const reason = (options?.reason as string) ?? "No reason provided";
-    const config = await economyConfig.get(guildId);
+    const config = await gamesConfig.get(guildId);
 
     if (amount === 0) {
       return { success: false, error: "Amount cannot be zero." };

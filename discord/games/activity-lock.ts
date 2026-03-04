@@ -1,7 +1,7 @@
 /**
- * discord/economy/activity-lock.ts
+ * discord/games/activity-lock.ts
  *
- * Exclusive activity lock — a player can only do ONE economy action at a time.
+ * Exclusive activity lock — a player can only do ONE game action at a time.
  * Uses KV with key `activity:{guildId}:{userId}`.
  */
 
@@ -9,25 +9,11 @@ import { kv } from "../persistence/kv.ts";
 import type { ActivityType, ActivityLock } from "./types.ts";
 
 const EXPIRY_DEFAULTS: Record<ActivityType, number> = {
-  farm: 24 * 60 * 60_000,
-  mine: 24 * 60 * 60_000,
-  forage: 24 * 60 * 60_000,
-  job: 24 * 60 * 60_000,
-  train: 24 * 60 * 60_000,
-  arena: 30 * 60_000,
   blackjack: 10 * 60_000,
-  adventure: 60 * 60_000,
 };
 
 const ACTIVITY_LABELS: Record<ActivityType, string> = {
-  farm: "farming",
-  mine: "mining",
-  forage: "foraging",
-  job: "working a job shift",
-  train: "training",
-  arena: "in an arena fight",
   blackjack: "playing blackjack",
-  adventure: "on an adventure",
 };
 
 function lockKey(guildId: string, userId: string): string {
