@@ -48,6 +48,8 @@ export default async function () {
 
 Files that are Cron triggers have cron in their name like `foobar.cron.tsx`
 
+**Warning:** Val Town auto-detects any file with `cron` in the name as a cron val. Never use `cron` in test file names — use `-job` instead (e.g. `reminders-job_test.ts`, not `reminders.cron_test.ts`).
+
 ### 3. Email Triggers
 
 - Process incoming emails
