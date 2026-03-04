@@ -64,6 +64,8 @@ persistence layers — all running on Val Town's serverless Deno isolates.
 - **Scheduled messages** — Admin-only delayed message posting
 - **Ticket system** — Thread-based support tickets with close reasons,
   join requests, and auto-expiry via cron
+- **Livestream notifications** — Track Twitch, YouTube, and Kick streamers with
+  automatic go-live embeds via cron
 - **React-roles** — Self-assignable role panels with button toggling
 - **Tags** — Per-guild text snippets with role/user-gated viewing
 - **Templates** — Reusable embed builder with role/user-gated send permissions
@@ -211,7 +213,8 @@ For each of these files, set the schedule to **every 1–5 minutes** in Val Town
 | `services/giveaways.cron.ts`          | Auto-end expired giveaways | `/giveaway`  |
 | `services/polls.cron.ts`              | Auto-end expired polls     | `/poll`      |
 | `services/reminders.cron.ts`          | Deliver due reminders      | `/remind`    |
-| `services/scheduled-messages.cron.ts` | Deliver due messages       | `/schedule`  |
+| `services/scheduled-messages.cron.ts` | Deliver due messages       | `/schedule`    |
+| `services/livestreams.cron.ts`        | Post go-live notifications | `/livestream`  |
 
 If you don't use a feature, you can skip its cron job. The commands will still
 work — items just won't auto-process until the cron is set up.
@@ -315,6 +318,9 @@ specific:
 | `STEAM_API_KEY`          | No       | Steam Web API key (for Steam linked role verifier)                                 |
 | `PATREON_WEBHOOK_SECRET` | No       | Patreon webhook HMAC-MD5 secret                                                    |
 | `FEEDBACK_WEBHOOK`       | No       | Webhook URL for `/feedback` submissions (command disabled when unset)               |
+| `TWITCH_CLIENT_ID`       | No       | Twitch application client ID (for `/livestream` Twitch tracking)                   |
+| `TWITCH_CLIENT_SECRET`   | No       | Twitch application client secret                                                   |
+| `YOUTUBE_API_KEY`        | No       | YouTube Data API v3 key (for `/livestream` YouTube tracking)                        |
 | `ALLOWED_GUILD_IDS`      | No       | Comma-separated guild IDs to restrict the bot to (empty = all guilds allowed)      |
 
 Required variables throw immediately at module load if missing.
@@ -327,8 +333,8 @@ The bot runs entirely on Val Town's serverless platform:
   Discord interactions, OAuth callbacks, admin endpoints, and legal pages. Each
   request is a new Deno isolate.
 - **Cron vals** (`services/*.cron.ts`) — Scheduled jobs for delivering
-  reminders, ending giveaways/polls, and sending scheduled messages. Each
-  invocation is a new isolate.
+  reminders, ending giveaways/polls, sending scheduled messages, and posting
+  livestream notifications. Each invocation is a new isolate.
 - **KV persistence** (`discord/persistence/kv.ts`) — All state is stored in Val
   Town SQLite via a key-value abstraction with atomic operations.
 - **Cold start** — Every isolate re-runs module-level code including registry
@@ -575,6 +581,20 @@ Private support ticket channels. Requires **Manage Channels** permission.
 
 Closed tickets are auto-deleted by `tickets.cron.ts` after 24 hours.
 
+#### `/livestream` (admin-only)
+
+Track streamers across Twitch, YouTube, and Kick. Notifications are posted
+automatically when tracked streamers go live.
+
+- `add <platform> <username> <channel> [display-name]` — Track a streamer in the
+  specified channel. Supports Twitch, YouTube (channel ID), and Kick.
+- `remove <platform> <username>` — Stop tracking a streamer
+- `list` — Show all tracked streamers grouped by platform
+
+Max 25 trackers per guild. Requires `TWITCH_CLIENT_ID` + `TWITCH_CLIENT_SECRET`
+for Twitch, `YOUTUBE_API_KEY` for YouTube. Kick works without credentials.
+Delivered by `livestreams.cron.ts` with a 5-minute renotification cooldown.
+
 #### `/tag`
 
 Per-guild text snippets with optional role/user-gated viewing.
@@ -682,6 +702,15 @@ reminders.
 Deletes closed ticket channels after their 24-hour grace period. Uses
 `claimDelete()` for atomic dedup. Treats 404 (already deleted) as success.
 On failure, re-inserts with a 1-hour retry delay.
+
+### `livestreams.cron.ts`
+
+Polls streaming platforms and posts Discord embeds when tracked streamers go
+live. Groups trackers by platform — Twitch is batched (up to 100 per API call),
+YouTube and Kick are checked in parallel (concurrency limit of 5). Uses atomic
+`kv.update()` to prevent duplicate notifications and a 5-minute cooldown to
+avoid spam on rapid online/offline cycles. Skips platforms whose credentials are
+not configured.
 
 ### `example.cron.ts`
 
@@ -1221,7 +1250,7 @@ export default defineComponent({
 
 ## Testing
 
-Catnip has a comprehensive test suite — **51 test files** with **529 tests** and
+Catnip has a comprehensive test suite — **57 test files** with **684 tests** and
 a **100% pass rate**. Tests run on Deno's built-in test runner with no external
 test dependencies.
 
@@ -1240,7 +1269,7 @@ deno test --allow-env --allow-net --no-check
 | **Persistence** | 2 | 43 | KV store CRUD, atomic operations, optimistic concurrency, time-based queries, guild config |
 | **Linked roles** | 5 | 34 | OAuth2 flow, verifier factory, Patreon webhook, routes, CSRF state tokens |
 | **Webhooks** | 2 | 36 | Batched logger (flush, levels, truncation), message sending (chunking, embeds, rate limits) |
-| **Cron jobs** | 5 | 23 | Giveaway auto-end, poll auto-end, reminder delivery, scheduled messages, ticket expiry |
+| **Cron jobs** | 6 | 35 | Giveaway auto-end, poll auto-end, reminder delivery, scheduled messages, ticket expiry, livestream notifications |
 | **HTTP endpoint** | 1 | 12 | Signature verification, routing, health check, admin auth |
 | **HTML pages** | 1 | 6 | Legal pages rendering, security headers |
 
@@ -1350,7 +1379,8 @@ All external dependencies are mocked so tests run offline and in isolation:
 │   ├── polls.cron.ts             # Auto-end expired polls
 │   ├── reminders.cron.ts         # Deliver due reminders
 │   ├── scheduled-messages.cron.ts# Deliver due scheduled messages
-│   └── tickets.cron.ts           # Expire inactive tickets
+│   ├── tickets.cron.ts           # Expire inactive tickets
+│   └── livestreams.cron.ts       # Post go-live notifications
 └── test/
     └── _mocks/                   # Test infrastructure mocks
 ```
