@@ -200,22 +200,28 @@ export default defineCommand({
         return { success: false, error: `Maximum of ${MAX_BACKUPS} backups reached. Delete an old backup first.` };
       }
 
-      // Gather data
-      const tags = await kv.get<Record<string, TagEntry>>(`tags:${guildId}`);
-
+      // Gather data in parallel
       const templatePrefix = `template:${guildId}:`;
-      const templateBlobs = await blob.list(templatePrefix);
+      const [tags, templateBlobs, counter] = await Promise.all([
+        kv.get<Record<string, TagEntry>>(`tags:${guildId}`),
+        blob.list(templatePrefix),
+        kv.get<number>(`counter:${guildId}`),
+      ]);
+      const templateEntries = await Promise.all(
+        templateBlobs.map(async (e) => {
+          const name = e.key.slice(templatePrefix.length);
+          const entry = await blob.getJSON<TemplateEntry>(e.key);
+          return entry ? [name, entry] as const : null;
+        }),
+      );
       const templates: Record<string, TemplateEntry> = {};
-      for (const e of templateBlobs) {
-        const name = e.key.slice(templatePrefix.length);
-        const entry = await blob.getJSON<TemplateEntry>(e.key);
-        if (entry) templates[name] = entry;
-      }
-
-      const counter = await kv.get<number>(`counter:${guildId}`);
+      for (const t of templateEntries) { if (t) templates[t[0]] = t[1]; }
 
       const now = new Date().toISOString();
       const id = Date.now().toString(36);
+
+      const tagCount = tags ? Object.keys(tags).length : 0;
+      const templateCount = Object.keys(templates).length;
 
       const backup: BackupData = {
         version: 1,
@@ -223,8 +229,8 @@ export default defineCommand({
         createdBy: userId,
         createdAt: now,
         data: {
-          ...(tags && Object.keys(tags).length > 0 ? { tags } : {}),
-          ...(Object.keys(templates).length > 0 ? { templates } : {}),
+          ...(tagCount > 0 ? { tags } : {}),
+          ...(templateCount > 0 ? { templates } : {}),
           ...(counter !== null ? { counter } : {}),
         },
       };
@@ -233,8 +239,8 @@ export default defineCommand({
       invalidateCache(guildId);
 
       const parts: string[] = [];
-      if (tags) parts.push(`${Object.keys(tags).length} tags`);
-      if (Object.keys(templates).length > 0) parts.push(`${Object.keys(templates).length} templates`);
+      if (tags) parts.push(`${tagCount} tags`);
+      if (templateCount > 0) parts.push(`${templateCount} templates`);
       if (counter !== null) parts.push("counter");
 
       return {
@@ -280,20 +286,18 @@ export default defineCommand({
 
       // Restore templates to blob — sanitize names and strip invalid imageUrls
       if (backup.data.templates) {
-        let templateErrors = 0;
-        for (const [rawName, entry] of Object.entries(backup.data.templates)) {
-          const name = sanitizeName(rawName);
-          if (!name) continue; // skip entries with empty sanitized name
-          const sanitizedEntry = { ...entry };
-          if (sanitizedEntry.imageUrl && !isValidPublicUrl(sanitizedEntry.imageUrl)) {
-            sanitizedEntry.imageUrl = undefined;
-          }
-          try {
+        const results = await Promise.allSettled(
+          Object.entries(backup.data.templates).map(async ([rawName, entry]) => {
+            const name = sanitizeName(rawName);
+            if (!name) return;
+            const sanitizedEntry = { ...entry };
+            if (sanitizedEntry.imageUrl && !isValidPublicUrl(sanitizedEntry.imageUrl)) {
+              sanitizedEntry.imageUrl = undefined;
+            }
             await blob.setJSON(`template:${guildId}:${name}`, sanitizedEntry);
-          } catch {
-            templateErrors++;
-          }
-        }
+          }),
+        );
+        const templateErrors = results.filter((r) => r.status === "rejected").length;
         if (templateErrors > 0) errors.push(`${templateErrors} template(s)`);
       }
 
@@ -306,10 +310,10 @@ export default defineCommand({
         }
       }
 
-      const parts: string[] = [];
-      if (backup.data.tags) parts.push(`${Object.keys(backup.data.tags).length} tags`);
-      if (backup.data.templates) parts.push(`${Object.keys(backup.data.templates).length} templates`);
-      if (backup.data.counter !== undefined) parts.push("counter");
+      const importParts: string[] = [];
+      if (backup.data.tags) importParts.push(`${Object.keys(backup.data.tags).length} tags`);
+      if (backup.data.templates) importParts.push(`${Object.keys(backup.data.templates).length} templates`);
+      if (backup.data.counter !== undefined) importParts.push("counter");
 
       const warning = errors.length > 0
         ? `\n\n**Warning:** Failed to restore: ${errors.join(", ")}.`
@@ -320,7 +324,7 @@ export default defineCommand({
         message: "",
         embed: {
           title: errors.length > 0 ? "Backup Partially Restored" : "Backup Restored",
-          description: `Restored ${parts.join(", ") || "no data"} from backup \`${id}\`.${warning}`,
+          description: `Restored ${importParts.join(", ") || "no data"} from backup \`${id}\`.${warning}`,
           color: errors.length > 0 ? EmbedColors.WARNING : EmbedColors.SUCCESS,
         },
       };
@@ -335,11 +339,13 @@ export default defineCommand({
 
       const lines = items.map((i) => {
         const date = new Date(i.data.createdAt).toLocaleString();
-        const parts: string[] = [];
-        if (i.data.data.tags) parts.push(`${Object.keys(i.data.data.tags).length} tags`);
-        if (i.data.data.templates) parts.push(`${Object.keys(i.data.data.templates).length} templates`);
-        if (i.data.data.counter !== undefined) parts.push("counter");
-        return `\`${i.id}\` — ${date} by <@${i.data.createdBy}> (${parts.join(", ") || "empty"})`;
+        const listParts: string[] = [];
+        const tagCount = i.data.data.tags ? Object.keys(i.data.data.tags).length : 0;
+        const templateCount = i.data.data.templates ? Object.keys(i.data.data.templates).length : 0;
+        if (tagCount > 0) listParts.push(`${tagCount} tags`);
+        if (templateCount > 0) listParts.push(`${templateCount} templates`);
+        if (i.data.data.counter !== undefined) listParts.push("counter");
+        return `\`${i.id}\` — ${date} by <@${i.data.createdBy}> (${listParts.join(", ") || "empty"})`;
       });
 
       return {

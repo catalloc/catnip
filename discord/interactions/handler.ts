@@ -196,8 +196,6 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
         `Please wait ${remaining} second${remaining !== 1 ? "s" : ""} before using this command again.`,
       );
     }
-    // Clean up expired entry before writing the new one
-    if (expiry !== null) await kv.delete(cooldownKey);
     const cooldownExpiry = Date.now() + command.cooldown * 1000;
     await kv.set(cooldownKey, cooldownExpiry, cooldownExpiry);
   }

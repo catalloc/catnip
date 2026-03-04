@@ -65,8 +65,12 @@ export async function discordBotFetch(
         if (response.status === 204) {
           return { ok: true, status: 204 };
         }
-        const data = await response.json();
-        return { ok: true, status: response.status, data };
+        try {
+          const data = await response.json();
+          return { ok: true, status: response.status, data };
+        } catch {
+          return { ok: true, status: response.status };
+        }
       }
 
       // 429 Rate Limited — respect Retry-After if time budget allows

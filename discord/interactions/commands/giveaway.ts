@@ -112,8 +112,8 @@ export async function announceGiveaway(guildId: string, config: GiveawayConfig):
     success = false;
   }
 
-  const winnerText = config.winners!.length > 0
-    ? `Congratulations ${config.winners!.map((id) => `<@${id}>`).join(", ")}! You won **${config.prize}**!`
+  const winnerText = (config.winners ?? []).length > 0
+    ? `Congratulations ${(config.winners ?? []).map((id) => `<@${id}>`).join(", ")}! You won **${config.prize}**!`
     : `No one entered the giveaway for **${config.prize}**.`;
   const postResult = await discordBotFetch("POST", `channels/${config.channelId}/messages`, {
     content: `🎉 **Giveaway Ended!**\n${winnerText}`,
@@ -320,7 +320,7 @@ export default defineCommand({
       await kv.set(giveawayKey(guildId), updated, Date.now() + CLEANUP_DELAY_MS);
 
       // Announce new winners
-      const winnerText = updated.winners!.map((id) => `<@${id}>`).join(", ");
+      const winnerText = (updated.winners ?? []).map((id) => `<@${id}>`).join(", ");
       const postRes = await discordBotFetch("POST", `channels/${updated.channelId}/messages`, {
         content: `🎉 **Giveaway Rerolled!** New winner(s): ${winnerText} for **${updated.prize}**!`,
       });

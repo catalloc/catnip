@@ -8,6 +8,7 @@
 
 import { CONFIG } from "../constants.ts";
 import type { LinkedRolesUser, VerifyResult } from "./define-verifier.ts";
+import { sanitize } from "../webhook/logger.ts";
 
 const API_BASE = "https://discord.com/api/v10";
 
@@ -44,10 +45,14 @@ export async function exchangeCode(
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`Token exchange failed (${res.status}): ${text}`);
+    console.error(`Token exchange failed (${res.status}): ${sanitize(text)}`);
     throw new Error(`Token exchange failed (${res.status})`);
   }
-  return res.json();
+  try {
+    return await res.json();
+  } catch {
+    throw new Error("Invalid JSON in token exchange response");
+  }
 }
 
 /** Fetch the authenticated user's profile. */
@@ -61,10 +66,14 @@ export async function fetchUser(
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`Fetch user failed (${res.status}): ${text}`);
+    console.error(`Fetch user failed (${res.status}): ${sanitize(text)}`);
     throw new Error(`Fetch user failed (${res.status})`);
   }
-  return res.json();
+  try {
+    return await res.json();
+  } catch {
+    throw new Error("Invalid JSON in fetch user response");
+  }
 }
 
 /** A connected account on the user's Discord profile. */
@@ -87,10 +96,14 @@ export async function fetchConnections(
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`Fetch connections failed (${res.status}): ${text}`);
+    console.error(`Fetch connections failed (${res.status}): ${sanitize(text)}`);
     throw new Error(`Fetch connections failed (${res.status})`);
   }
-  return res.json();
+  try {
+    return await res.json();
+  } catch {
+    throw new Error("Invalid JSON in fetch connections response");
+  }
 }
 
 /** Push role connection metadata for the authenticated user. */
@@ -117,7 +130,7 @@ export async function pushMetadata(
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`Push metadata failed (${res.status}): ${text}`);
+    console.error(`Push metadata failed (${res.status}): ${sanitize(text)}`);
     throw new Error(`Push metadata failed (${res.status})`);
   }
 }
