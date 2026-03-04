@@ -91,6 +91,24 @@ export default defineCommand({
       ],
     },
     {
+      name: "train",
+      description: "Configure training settings",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        { name: "enabled", description: "Enable or disable training", type: OptionTypes.BOOLEAN, required: true },
+      ],
+    },
+    {
+      name: "arena",
+      description: "Configure arena settings",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        { name: "enabled", description: "Enable or disable the arena", type: OptionTypes.BOOLEAN, required: true },
+      ],
+    },
+    {
       name: "reset",
       description: "Reset all economy settings to defaults",
       type: OptionTypes.SUB_COMMAND,
@@ -119,6 +137,8 @@ export default defineCommand({
         .field("Farm", config.farmEnabled ? "Enabled" : "Disabled", true)
         .field("Mine", config.mineEnabled ? "Enabled" : "Disabled", true)
         .field("Forage", config.forageEnabled ? "Enabled" : "Disabled", true)
+        .field("Training", config.trainEnabled ? "Enabled" : "Disabled", true)
+        .field("Arena", config.arenaEnabled ? "Enabled" : "Disabled", true)
         .build();
 
       return { success: true, embed: e };
@@ -195,6 +215,16 @@ export default defineCommand({
     if (sub === "forage") {
       await economyConfig.update(guildId, { forageEnabled: options?.enabled as boolean });
       return { success: true, message: `Foraging ${options?.enabled ? "enabled" : "disabled"}.` };
+    }
+
+    if (sub === "train") {
+      await economyConfig.update(guildId, { trainEnabled: options?.enabled as boolean });
+      return { success: true, message: `Training ${options?.enabled ? "enabled" : "disabled"}.` };
+    }
+
+    if (sub === "arena") {
+      await economyConfig.update(guildId, { arenaEnabled: options?.enabled as boolean });
+      return { success: true, message: `Arena ${options?.enabled ? "enabled" : "disabled"}.` };
     }
 
     if (sub === "reset") {

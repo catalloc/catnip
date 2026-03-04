@@ -7,6 +7,7 @@
 import { defineComponent } from "../define-component.ts";
 import { accounts } from "../../economy/accounts.ts";
 import { economyConfig } from "../../economy/economy-config.ts";
+import { activityLock } from "../../economy/activity-lock.ts";
 import {
   blackjack, formatHand, handValue, isBust,
   playDealerHand, determineOutcome, calculatePayout,
@@ -70,6 +71,7 @@ export default defineComponent({
       if (isBust(session.playerHand)) {
         session.status = "done";
         await blackjack.deleteSession(guildId, userId);
+        await activityLock.releaseLock(guildId, userId);
         const newAccount = await accounts.getOrCreate(guildId, userId);
         return {
           success: true,
@@ -108,6 +110,7 @@ export default defineComponent({
       const payout = calculatePayout(session.bet, outcome);
       if (payout > 0) await accounts.creditBalance(guildId, userId, payout);
       await blackjack.deleteSession(guildId, userId);
+      await activityLock.releaseLock(guildId, userId);
       const newAccount = await accounts.getOrCreate(guildId, userId);
 
       return {
@@ -132,6 +135,7 @@ export default defineComponent({
       if (isBust(session.playerHand)) {
         session.status = "done";
         await blackjack.deleteSession(guildId, userId);
+        await activityLock.releaseLock(guildId, userId);
         const newAccount = await accounts.getOrCreate(guildId, userId);
         return {
           success: true,
@@ -146,6 +150,7 @@ export default defineComponent({
       const payout = calculatePayout(session.bet, outcome);
       if (payout > 0) await accounts.creditBalance(guildId, userId, payout);
       await blackjack.deleteSession(guildId, userId);
+      await activityLock.releaseLock(guildId, userId);
       const newAccount = await accounts.getOrCreate(guildId, userId);
 
       return {

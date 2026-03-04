@@ -7,6 +7,7 @@
 import { defineCommand, OptionTypes } from "../define-command.ts";
 import { accounts } from "../../economy/accounts.ts";
 import { economyConfig } from "../../economy/economy-config.ts";
+import { activityLock } from "../../economy/activity-lock.ts";
 import { crimes, getCrimeDefinition, rollCrime, crimeXpAward, CRIME_DEFINITIONS } from "../../economy/crimes.ts";
 import { xp, makeXpBar } from "../../economy/xp.ts";
 import { embed } from "../../helpers/embed-builder.ts";
@@ -46,6 +47,10 @@ export default defineCommand({
     if (!config.crimeEnabled) {
       return { success: false, error: "Crime is disabled in this server." };
     }
+
+    // Activity lock check — crime is instant, can't do during ongoing activity
+    const lockCheck = await activityLock.requireNoActivity(guildId, userId);
+    if (!lockCheck.allowed) return { success: false, error: lockCheck.error };
 
     const crime = getCrimeDefinition(crimeId);
     if (!crime) return { success: false, error: "Unknown crime type." };

@@ -9,6 +9,7 @@ import { accounts } from "./accounts.ts";
 import { economyConfig } from "./economy-config.ts";
 import { xp, makeXpBar, XP_AWARDS } from "./xp.ts";
 import { idleActions, rollIdleOutcome } from "./idle-actions.ts";
+import { activityLock } from "./activity-lock.ts";
 import { embed } from "../helpers/embed-builder.ts";
 import { EmbedColors } from "../constants.ts";
 import type { IdleActionType, IdleActionTier, EconomyGuildConfig } from "./types.ts";
@@ -56,8 +57,16 @@ export function buildIdleExecutor(
         return { success: false, error: `You need to be **Level ${tier.requiredLevel}** to ${actionType} **${tier.name}**. You're Level ${playerLevel}.` };
       }
 
+      // Acquire activity lock
+      const lockResult = await activityLock.acquireLock(guildId, userId, actionType, tier.name);
+      if (!lockResult.success) return { success: false, error: lockResult.error };
+
       const result = await idleActions.startAction(actionType, guildId, userId, tier);
-      if (!result.success) return { success: false, error: result.error };
+      if (!result.success) {
+        // Release lock if idle action start failed
+        await activityLock.releaseLock(guildId, userId);
+        return { success: false, error: result.error };
+      }
 
       const e = embed()
         .title(`${config.currencyEmoji} ${actionType.charAt(0).toUpperCase() + actionType.slice(1)}`)
@@ -74,6 +83,9 @@ export function buildIdleExecutor(
     if (sub === "harvest") {
       const collectResult = await idleActions.collectAction(actionType, guildId, userId);
       if (!collectResult.success) return { success: false, error: collectResult.error };
+
+      // Release activity lock
+      await activityLock.releaseLock(guildId, userId);
 
       const state = collectResult.state!;
       const tier = idleActions.getTier(tiers, state.tierId);

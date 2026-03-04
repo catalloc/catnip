@@ -13,49 +13,45 @@ function resetStore() {
 const guildId = "g1";
 const userId = "u1";
 
-Deno.test("job status: shows unemployed by default", async () => {
+Deno.test("job status: no active shift", async () => {
   resetStore();
   const result = await command.execute({ guildId, userId, options: { subcommand: "status" }, config: {} } as any);
   assertEquals(result.success, true);
-  assert(result.embed);
-  assert(result.embed.fields?.some((f: any) => f.value === "Unemployed"));
+  assert(result.message?.includes("No active shift"));
 });
 
-Deno.test("job status: shows correct tier after upgrade", async () => {
+Deno.test("job start: fails when unemployed", async () => {
   resetStore();
-  await jobs.getOrCreate(guildId, userId);
-  await jobs.setTier(guildId, userId, "chef");
-  const result = await command.execute({ guildId, userId, options: { subcommand: "status" }, config: {} } as any);
-  assertEquals(result.success, true);
-  assert(result.embed?.fields?.some((f: any) => f.value === "Chef"));
-});
-
-Deno.test("job collect: fails when unemployed", async () => {
-  resetStore();
-  const result = await command.execute({ guildId, userId, options: { subcommand: "collect" }, config: {} } as any);
+  const result = await command.execute({ guildId, userId, options: { subcommand: "start" }, config: {} } as any);
   assertEquals(result.success, false);
   assert(result.error?.includes("unemployed"));
 });
 
-Deno.test("job collect: fails when no hours elapsed", async () => {
+Deno.test("job start: begins shift when employed", async () => {
   resetStore();
   await jobs.getOrCreate(guildId, userId);
   await jobs.setTier(guildId, userId, "burger-flipper");
-  // Collect immediately — no time has passed
-  const result = await command.execute({ guildId, userId, options: { subcommand: "collect" }, config: {} } as any);
-  assertEquals(result.success, false);
-  assert(result.error?.includes("No earnings"));
+  const result = await command.execute({ guildId, userId, options: { subcommand: "start" }, config: {} } as any);
+  assertEquals(result.success, true);
+  assert(result.embed?.description?.includes("Burger Flipper"));
 });
 
-Deno.test("job info: shows all tiers", async () => {
+Deno.test("job collect: fails when no shift active", async () => {
+  resetStore();
+  const result = await command.execute({ guildId, userId, options: { subcommand: "collect" }, config: {} } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("don't have"));
+});
+
+Deno.test("job info: shows tiers with shift payouts", async () => {
   resetStore();
   const result = await command.execute({ guildId, userId, options: { subcommand: "info" }, config: {} } as any);
   assertEquals(result.success, true);
   assert(result.embed);
   const desc = result.embed.description ?? "";
-  assert(desc.includes("Unemployed"));
+  assert(desc.includes("Burger Flipper"));
   assert(desc.includes("Mafia Boss"));
-  assert(desc.includes("500"));
+  assert(desc.includes("1,000"));
 });
 
 Deno.test("job: rejects invalid subcommand", async () => {

@@ -15,6 +15,17 @@ export interface EconomyAccount {
   updatedAt: number;
 }
 
+// ── Activity Lock ────────────────────────────────────────
+
+export type ActivityType = "farm" | "mine" | "forage" | "job" | "train" | "arena" | "blackjack";
+
+export interface ActivityLock {
+  activityType: ActivityType;
+  details?: string;
+  startedAt: number;
+  expiresAt: number;
+}
+
 // ── Jobs ──────────────────────────────────────────────────
 
 export type JobTierId =
@@ -34,6 +45,17 @@ export interface JobTierConfig {
   name: string;
   hourlyRate: number;
   shopPrice: number;
+  shiftDurationMs: number;
+  shiftPayout: number;
+}
+
+export interface JobShiftState {
+  userId: string;
+  guildId: string;
+  tierId: JobTierId;
+  startedAt: number;
+  readyAt: number;
+  collected: boolean;
 }
 
 export interface JobState {
@@ -72,7 +94,9 @@ export interface CrimeState {
 
 // ── Shop ──────────────────────────────────────────────────
 
-export type ShopItemType = "job-upgrade" | "cosmetic-role" | "custom" | "profile-title" | "profile-badge" | "profile-border";
+export type ShopItemType = "job-upgrade" | "cosmetic-role" | "custom" | "profile-title" | "profile-badge" | "profile-border" | "weapon";
+
+export type WeaponType = "sword" | "bow" | "magic";
 
 export interface ShopItem {
   id: string;
@@ -86,6 +110,9 @@ export interface ShopItem {
   profileTitle?: string;
   profileBadge?: string;
   profileBorderColor?: number;
+  weaponId?: string;
+  weaponDamage?: number;
+  weaponType?: WeaponType;
   enabled: boolean;
 }
 
@@ -131,6 +158,8 @@ export interface EconomyGuildConfig {
   farmEnabled: boolean;
   mineEnabled: boolean;
   forageEnabled: boolean;
+  trainEnabled: boolean;
+  arenaEnabled: boolean;
   startingBalance: number;
   createdAt: number;
   updatedAt: number;
@@ -185,4 +214,100 @@ export interface ProfileData {
   activeBadgeId?: string;
   createdAt: number;
   updatedAt: number;
+}
+
+// ── Combat Stats ────────────────────────────────────────
+
+export type TrainableAttribute = "strength" | "defense" | "speed" | "vitality";
+export type WeaponMasteryType = "sword" | "bow" | "magic";
+export type TrainableSkill = TrainableAttribute | WeaponMasteryType;
+
+export interface CombatStats {
+  userId: string;
+  guildId: string;
+  strength: number;
+  defense: number;
+  speed: number;
+  vitality: number;
+  swordMastery: number;
+  bowMastery: number;
+  magicMastery: number;
+  equippedWeaponId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface DerivedCombatStats {
+  maxHp: number;
+  attack: number;
+  defense: number;
+  speed: number;
+  unlockedSkills: CombatSkill[];
+}
+
+// ── Training ────────────────────────────────────────────
+
+export interface TrainingSession {
+  userId: string;
+  guildId: string;
+  skill: TrainableSkill;
+  startedAt: number;
+  readyAt: number;
+  collected: boolean;
+}
+
+// ── Combat Skills ───────────────────────────────────────
+
+export type CombatSkillEffect = "power-strike" | "shield-wall" | "quick-strike" | "heal" | "berserk";
+
+export interface CombatSkill {
+  id: string;
+  name: string;
+  description: string;
+  requiredAttribute: TrainableAttribute;
+  requiredLevel: number;
+  effect: CombatSkillEffect;
+}
+
+// ── Monsters & Arena ────────────────────────────────────
+
+export interface MonsterDefinition {
+  id: string;
+  name: string;
+  emoji: string;
+  requiredLevel: number;
+  hp: number;
+  attack: number;
+  defense: number;
+  speed: number;
+  rewardMin: number;
+  rewardMax: number;
+  xpReward: number;
+}
+
+export interface ArenaSession {
+  guildId: string;
+  userId: string;
+  monster: MonsterDefinition;
+  playerHp: number;
+  playerMaxHp: number;
+  monsterHp: number;
+  monsterMaxHp: number;
+  playerStats: DerivedCombatStats;
+  turn: number;
+  status: "active" | "victory" | "defeat" | "fled";
+  berserkActive: boolean;
+  shieldActive: boolean;
+  log: string[];
+  createdAt: number;
+}
+
+// ── Weapons ─────────────────────────────────────────────
+
+export interface WeaponDefinition {
+  id: string;
+  name: string;
+  damage: number;
+  weaponType: WeaponType;
+  requiredLevel: number;
 }

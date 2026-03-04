@@ -5,20 +5,25 @@
  */
 
 import { kv } from "../persistence/kv.ts";
-import type { JobTierId, JobTierConfig, JobState } from "./types.ts";
+import type { JobTierId, JobTierConfig, JobState, JobShiftState } from "./types.ts";
 
 export const DEFAULT_JOB_TIERS: JobTierConfig[] = [
-  { id: "unemployed", name: "Unemployed", hourlyRate: 0, shopPrice: 0 },
-  { id: "burger-flipper", name: "Burger Flipper", hourlyRate: 10, shopPrice: 100 },
-  { id: "cashier", name: "Cashier", hourlyRate: 25, shopPrice: 300 },
-  { id: "mechanic", name: "Mechanic", hourlyRate: 50, shopPrice: 750 },
-  { id: "chef", name: "Chef", hourlyRate: 80, shopPrice: 1500 },
-  { id: "programmer", name: "Programmer", hourlyRate: 120, shopPrice: 3000 },
-  { id: "doctor", name: "Doctor", hourlyRate: 180, shopPrice: 6000 },
-  { id: "lawyer", name: "Lawyer", hourlyRate: 250, shopPrice: 10000 },
-  { id: "ceo", name: "CEO", hourlyRate: 350, shopPrice: 20000 },
-  { id: "mafia-boss", name: "Mafia Boss", hourlyRate: 500, shopPrice: 50000 },
+  { id: "unemployed", name: "Unemployed", hourlyRate: 0, shopPrice: 0, shiftDurationMs: 0, shiftPayout: 0 },
+  { id: "burger-flipper", name: "Burger Flipper", hourlyRate: 10, shopPrice: 100, shiftDurationMs: 15 * 60_000, shiftPayout: 15 },
+  { id: "cashier", name: "Cashier", hourlyRate: 25, shopPrice: 300, shiftDurationMs: 15 * 60_000, shiftPayout: 38 },
+  { id: "mechanic", name: "Mechanic", hourlyRate: 50, shopPrice: 750, shiftDurationMs: 20 * 60_000, shiftPayout: 67 },
+  { id: "chef", name: "Chef", hourlyRate: 80, shopPrice: 1500, shiftDurationMs: 20 * 60_000, shiftPayout: 107 },
+  { id: "programmer", name: "Programmer", hourlyRate: 120, shopPrice: 3000, shiftDurationMs: 25 * 60_000, shiftPayout: 200 },
+  { id: "doctor", name: "Doctor", hourlyRate: 180, shopPrice: 6000, shiftDurationMs: 25 * 60_000, shiftPayout: 300 },
+  { id: "lawyer", name: "Lawyer", hourlyRate: 250, shopPrice: 10000, shiftDurationMs: 30 * 60_000, shiftPayout: 500 },
+  { id: "ceo", name: "CEO", hourlyRate: 350, shopPrice: 20000, shiftDurationMs: 30 * 60_000, shiftPayout: 700 },
+  { id: "mafia-boss", name: "Mafia Boss", hourlyRate: 500, shopPrice: 50000, shiftDurationMs: 30 * 60_000, shiftPayout: 1000 },
 ];
+
+export const SHIFT_XP: Record<string, number> = {
+  "burger-flipper": 5, "cashier": 5, "mechanic": 8, "chef": 8,
+  "programmer": 10, "doctor": 10, "lawyer": 12, "ceo": 12, "mafia-boss": 15,
+};
 
 function jobKey(guildId: string, userId: string): string {
   return `job:${guildId}:${userId}`;
@@ -104,4 +109,72 @@ export const jobs = {
   },
 };
 
-export const _internals = { jobKey, createDefault };
+// ── Shift Methods ──────────────────────────────────────
+
+function shiftKey(guildId: string, userId: string): string {
+  return `job-shift:${guildId}:${userId}`;
+}
+
+export const shifts = {
+  async getShift(guildId: string, userId: string): Promise<JobShiftState | null> {
+    return await kv.get<JobShiftState>(shiftKey(guildId, userId));
+  },
+
+  async startShift(
+    guildId: string,
+    userId: string,
+    tierId: JobTierId,
+    now = Date.now(),
+  ): Promise<{ success: boolean; error?: string; state?: JobShiftState }> {
+    const tier = getTierConfig(tierId);
+    if (tier.shiftDurationMs === 0) {
+      return { success: false, error: "You're unemployed! Buy a job upgrade from `/shop browse` first." };
+    }
+
+    const existing = await kv.get<JobShiftState>(shiftKey(guildId, userId));
+    if (existing && !existing.collected) {
+      return { success: false, error: "You already have an active shift! Use `/job collect` to finish it." };
+    }
+
+    const state: JobShiftState = {
+      userId,
+      guildId,
+      tierId,
+      startedAt: now,
+      readyAt: now + tier.shiftDurationMs,
+      collected: false,
+    };
+
+    await kv.set(shiftKey(guildId, userId), state);
+    return { success: true, state };
+  },
+
+  async collectShift(
+    guildId: string,
+    userId: string,
+    now = Date.now(),
+  ): Promise<{ success: boolean; error?: string; state?: JobShiftState; coins?: number; xpAmount?: number }> {
+    const state = await kv.get<JobShiftState>(shiftKey(guildId, userId));
+    if (!state) {
+      return { success: false, error: "You don't have an active shift. Start one with `/job start`." };
+    }
+    if (state.collected) {
+      return { success: false, error: "You already collected this shift! Start a new one." };
+    }
+    if (now < state.readyAt) {
+      const remainMs = state.readyAt - now;
+      const mins = Math.ceil(remainMs / 60_000);
+      return { success: false, error: `Your shift isn't done yet! Come back in **${mins}m**.` };
+    }
+
+    state.collected = true;
+    await kv.set(shiftKey(guildId, userId), state);
+
+    const tier = getTierConfig(state.tierId);
+    const xpAmount = SHIFT_XP[state.tierId] ?? 0;
+
+    return { success: true, state, coins: tier.shiftPayout, xpAmount };
+  },
+};
+
+export const _internals = { jobKey, createDefault, shiftKey };

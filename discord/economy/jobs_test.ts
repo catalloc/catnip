@@ -1,7 +1,7 @@
 import "../../test/_mocks/env.ts";
-import { assertEquals } from "../../test/assert.ts";
+import { assertEquals, assert } from "../../test/assert.ts";
 import { sqlite } from "../../test/_mocks/sqlite.ts";
-import { jobs, getTierConfig, getTierIndex, computeEarnings, DEFAULT_JOB_TIERS, _internals } from "./jobs.ts";
+import { jobs, shifts, getTierConfig, getTierIndex, computeEarnings, DEFAULT_JOB_TIERS, _internals } from "./jobs.ts";
 
 function resetStore() {
   (sqlite as any)._reset();
@@ -97,4 +97,90 @@ Deno.test("DEFAULT_JOB_TIERS: has 10 tiers", () => {
   assertEquals(DEFAULT_JOB_TIERS.length, 10);
   assertEquals(DEFAULT_JOB_TIERS[0].id, "unemployed");
   assertEquals(DEFAULT_JOB_TIERS[9].id, "mafia-boss");
+});
+
+Deno.test("DEFAULT_JOB_TIERS: all have shift fields", () => {
+  for (const tier of DEFAULT_JOB_TIERS) {
+    assertEquals(typeof tier.shiftDurationMs, "number");
+    assertEquals(typeof tier.shiftPayout, "number");
+  }
+});
+
+// ── Shift Tests ──────────────────────────────────────────
+
+Deno.test("shifts _internals.shiftKey: correct format", () => {
+  assertEquals(_internals.shiftKey("g1", "u1"), "job-shift:g1:u1");
+});
+
+Deno.test("shifts startShift: fails when unemployed", async () => {
+  resetStore();
+  const result = await shifts.startShift("g1", "u1", "unemployed");
+  assertEquals(result.success, false);
+  assert(result.error?.includes("unemployed"));
+});
+
+Deno.test("shifts startShift: creates shift", async () => {
+  resetStore();
+  const now = 1000000;
+  const result = await shifts.startShift("g1", "u1", "burger-flipper", now);
+  assertEquals(result.success, true);
+  assertEquals(result.state?.tierId, "burger-flipper");
+  assertEquals(result.state?.readyAt, now + 15 * 60_000);
+});
+
+Deno.test("shifts startShift: rejects duplicate", async () => {
+  resetStore();
+  await shifts.startShift("g1", "u1", "burger-flipper");
+  const result = await shifts.startShift("g1", "u1", "burger-flipper");
+  assertEquals(result.success, false);
+  assert(result.error?.includes("already have"));
+});
+
+Deno.test("shifts collectShift: not ready", async () => {
+  resetStore();
+  const now = 1000000;
+  await shifts.startShift("g1", "u1", "burger-flipper", now);
+  const result = await shifts.collectShift("g1", "u1", now + 60_000);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("isn't done"));
+});
+
+Deno.test("shifts collectShift: success", async () => {
+  resetStore();
+  const now = 1000000;
+  await shifts.startShift("g1", "u1", "burger-flipper", now);
+  const result = await shifts.collectShift("g1", "u1", now + 15 * 60_000);
+  assertEquals(result.success, true);
+  assertEquals(result.coins, 15);
+  assertEquals(result.xpAmount, 5);
+});
+
+Deno.test("shifts collectShift: double collect rejected", async () => {
+  resetStore();
+  const now = 1000000;
+  await shifts.startShift("g1", "u1", "burger-flipper", now);
+  await shifts.collectShift("g1", "u1", now + 15 * 60_000);
+  const result = await shifts.collectShift("g1", "u1", now + 15 * 60_000 + 1000);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("already collected"));
+});
+
+Deno.test("shifts collectShift: no active shift", async () => {
+  resetStore();
+  const result = await shifts.collectShift("g1", "u1");
+  assertEquals(result.success, false);
+  assert(result.error?.includes("don't have"));
+});
+
+Deno.test("shifts getShift: returns shift", async () => {
+  resetStore();
+  await shifts.startShift("g1", "u1", "cashier");
+  const shift = await shifts.getShift("g1", "u1");
+  assertEquals(shift?.tierId, "cashier");
+});
+
+Deno.test("shifts getShift: null when none", async () => {
+  resetStore();
+  const shift = await shifts.getShift("g1", "u1");
+  assertEquals(shift, null);
 });

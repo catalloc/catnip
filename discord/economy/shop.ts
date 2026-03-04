@@ -8,6 +8,7 @@ import { kv } from "../persistence/kv.ts";
 import { accounts } from "./accounts.ts";
 import { jobs, getTierIndex } from "./jobs.ts";
 import { profile } from "./profile.ts";
+import { training } from "./training.ts";
 import { discordBotFetch } from "../discord-api.ts";
 import type { ShopItem, ShopCatalog, JobTierId } from "./types.ts";
 
@@ -120,6 +121,10 @@ export const shop = {
 
     if (item.type === "profile-border" && item.profileBorderColor != null) {
       await profile.setBorderColor(guildId, userId, item.profileBorderColor);
+    }
+
+    if (item.type === "weapon" && item.weaponId) {
+      await training.equipWeapon(guildId, userId, item.weaponId);
     }
 
     return { success: true, item };

@@ -10,7 +10,7 @@ import { economyConfig } from "../../economy/economy-config.ts";
 import { xp } from "../../economy/xp.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors, isGuildAdmin } from "../../constants.ts";
-import type { ShopItemType, JobTierId } from "../../economy/types.ts";
+import type { ShopItemType, JobTierId, WeaponType } from "../../economy/types.ts";
 
 export default defineCommand({
   name: "shop",
@@ -50,6 +50,7 @@ export default defineCommand({
             { name: "Profile Title", value: "profile-title" },
             { name: "Profile Badge", value: "profile-badge" },
             { name: "Profile Border", value: "profile-border" },
+            { name: "Weapon", value: "weapon" },
           ],
         },
         { name: "job-tier", description: "Job tier to unlock (for job-upgrade type)", type: OptionTypes.STRING, required: false },
@@ -58,6 +59,12 @@ export default defineCommand({
         { name: "title-text", description: "Title text (for profile-title type)", type: OptionTypes.STRING, required: false },
         { name: "badge-emoji", description: "Badge emoji (for profile-badge type)", type: OptionTypes.STRING, required: false },
         { name: "border-color", description: "Border color hex, e.g. FFD700 (for profile-border type)", type: OptionTypes.STRING, required: false },
+        { name: "weapon-id", description: "Weapon ID from /arena weapons (for weapon type)", type: OptionTypes.STRING, required: false },
+        { name: "weapon-damage", description: "Weapon damage value (for weapon type)", type: OptionTypes.INTEGER, required: false },
+        {
+          name: "weapon-type", description: "Weapon type (for weapon type)", type: OptionTypes.STRING, required: false,
+          choices: [{ name: "Sword", value: "sword" }, { name: "Bow", value: "bow" }, { name: "Magic", value: "magic" }],
+        },
       ],
     },
     {
@@ -147,6 +154,9 @@ export default defineCommand({
       const titleText = options?.["title-text"] as string | undefined;
       const badgeEmoji = options?.["badge-emoji"] as string | undefined;
       const borderColorHex = options?.["border-color"] as string | undefined;
+      const weaponId = options?.["weapon-id"] as string | undefined;
+      const weaponDamage = options?.["weapon-damage"] as number | undefined;
+      const weaponType = options?.["weapon-type"] as WeaponType | undefined;
 
       if (price < 1) return { success: false, error: "Price must be at least 1." };
 
@@ -164,6 +174,9 @@ export default defineCommand({
         profileTitle: titleText,
         profileBadge: badgeEmoji,
         profileBorderColor,
+        weaponId,
+        weaponDamage,
+        weaponType,
       });
 
       if (!result.success) return { success: false, error: result.error };

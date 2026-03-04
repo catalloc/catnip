@@ -7,6 +7,7 @@
 import { defineCommand, OptionTypes } from "../define-command.ts";
 import { accounts } from "../../economy/accounts.ts";
 import { economyConfig } from "../../economy/economy-config.ts";
+import { activityLock } from "../../economy/activity-lock.ts";
 import { playCoinflip } from "../../economy/casino/coinflip.ts";
 import { playDice } from "../../economy/casino/dice.ts";
 import { playSlots } from "../../economy/casino/slots.ts";
@@ -115,6 +116,15 @@ export default defineCommand({
 
     if (!config.casinoEnabled) {
       return { success: false, error: "The casino is closed in this server." };
+    }
+
+    // Activity lock: blackjack acquires, instant games just check
+    if (sub === "blackjack") {
+      const lockResult = await activityLock.acquireLock(guildId, userId, "blackjack");
+      if (!lockResult.success) return { success: false, error: lockResult.error };
+    } else {
+      const lockCheck = await activityLock.requireNoActivity(guildId, userId);
+      if (!lockCheck.allowed) return { success: false, error: lockCheck.error };
     }
 
     const bet = options?.bet as number;
@@ -226,6 +236,7 @@ export default defineCommand({
       const existing = await blackjack.getSession(guildId, userId);
       if (existing) {
         await accounts.creditBalance(guildId, userId, bet); // refund
+        await activityLock.releaseLock(guildId, userId); // release since we acquired above
         return { success: false, error: "You already have an active blackjack game! Use the buttons to play." };
       }
 
@@ -239,6 +250,7 @@ export default defineCommand({
         const bjWon = outcome !== "loss" && outcome !== "dealer-blackjack";
         if (payout > 0) await accounts.creditBalance(guildId, userId, payout);
         await blackjack.deleteSession(guildId, userId);
+        await activityLock.releaseLock(guildId, userId);
         const newAccount = await accounts.getOrCreate(guildId, userId);
         const xpMsg = await grantCasinoXp(guildId, userId, bjWon);
 
