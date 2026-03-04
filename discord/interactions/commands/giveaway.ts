@@ -130,26 +130,25 @@ export async function endGiveaway(guildId: string): Promise<void> {
   const key = giveawayKey(guildId);
 
   // Atomically claim the giveaway — only one caller can transition ended to true
+  // Set announceFailed:true as a fail-safe so crash between claim and announce is retried by cron
   const config = await kv.claimUpdate<GiveawayConfig>(key, (current) => {
     if (current.ended) return null; // already ended, don't claim
     const winners = pickWinners(current.entrants, current.winnersCount);
-    return { ...current, ended: true, winners };
+    return { ...current, ended: true, winners, announceFailed: true, announceRetries: 0 };
   });
 
   if (!config) return; // no giveaway, already ended, or lost race
 
-  // Optimistic: schedule cleanup
-  await kv.set(key, config, Date.now() + CLEANUP_DELAY_MS);
-
   const announced = await announceGiveaway(guildId, config);
-  if (!announced) {
+  if (announced) {
+    // Success — clear fail-safe flag and schedule cleanup
+    const { announceFailed: _, announceRetries: __, ...clean } = config;
+    await kv.set(key, clean, Date.now() + CLEANUP_DELAY_MS);
+  } else {
     // Override with retry schedule so the cron re-attempts the announcement
+    // announceFailed is already set from claimUpdate
     try {
-      await kv.set(
-        key,
-        { ...config, announceFailed: true, announceRetries: 0 },
-        Date.now() + ANNOUNCE_RETRY_DELAY_MS,
-      );
+      await kv.set(key, config, Date.now() + ANNOUNCE_RETRY_DELAY_MS);
     } catch {
       logger.error(`Failed to schedule announce retry for giveaway ${guildId}`);
     }
@@ -263,7 +262,7 @@ export default defineCommand({
       const raceCheck = await kv.get<GiveawayConfig>(giveawayKey(guildId));
       if (raceCheck && !raceCheck.ended) {
         // Another admin created one while we were posting — clean up orphaned message
-        await discordBotFetch("DELETE", `channels/${channelId}/messages/${config.messageId}`).catch(() => {});
+        await discordBotFetch("DELETE", `channels/${channelId}/messages/${config.messageId}`).catch((err) => logger.warn("Failed to clean up orphaned giveaway message:", err));
         return { success: false, error: "A giveaway was just created by another admin. Please try again." };
       }
 

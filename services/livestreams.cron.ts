@@ -132,7 +132,11 @@ async function processTracker(
     if (!result.ok) {
       logger.error(`Failed to notify ${tracker.displayName} (${tracker.platform}) in guild ${tracker.guildId}: ${result.error}`);
       // Clean up the live state we just wrote since notification failed
-      await kv.delete(liveKey);
+      try {
+        await kv.delete(liveKey);
+      } catch (deleteErr) {
+        logger.error(`Failed to clean up live state ${liveKey}:`, deleteErr);
+      }
       return "noop";
     }
 

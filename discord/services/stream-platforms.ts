@@ -9,6 +9,7 @@
 
 import { CONFIG } from "../constants.ts";
 import { kv } from "../persistence/kv.ts";
+import { sanitize } from "../webhook/logger.ts";
 
 export type Platform = "twitch" | "youtube" | "kick";
 
@@ -66,7 +67,7 @@ async function getTwitchToken(): Promise<string> {
   } catch (error) {
     // If refresh fails but we have a cached token (possibly still valid), use it as fallback
     if (cached) {
-      console.warn(`[Twitch] Token refresh failed, using stale cached token: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(sanitize(`[Twitch] Token refresh failed, using stale cached token: ${error instanceof Error ? error.message : String(error)}`));
       return cached.accessToken;
     }
     throw error;

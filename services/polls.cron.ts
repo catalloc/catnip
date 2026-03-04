@@ -24,7 +24,8 @@ export default async function () {
     async process(entry, logger) {
       const config = entry.value as PollConfig;
       if (!config?.channelId || !config?.messageId) {
-        logger.warn(`Skipping malformed poll: ${entry.key}`);
+        logger.warn(`Deleting malformed poll: ${entry.key}`);
+        await kv.claimDelete(entry.key).catch(() => {});
         return;
       }
 

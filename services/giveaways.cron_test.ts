@@ -68,7 +68,7 @@ Deno.test("giveaways cron: API failure does not delete giveaway (retried next ru
   }
 });
 
-Deno.test("giveaways cron: skips malformed entries", async () => {
+Deno.test("giveaways cron: deletes malformed entries", async () => {
   resetStore();
   const key = "giveaway:g1";
   // Missing channelId and messageId
@@ -76,9 +76,9 @@ Deno.test("giveaways cron: skips malformed entries", async () => {
   mockFetch({ default: { status: 200, body: { id: "msg1" } } });
   try {
     await runCron();
-    // Malformed entry is skipped — still in KV
+    // Malformed entry is cleaned up
     const remaining = await kv.get(key);
-    assert(remaining !== null, "Malformed giveaway should not be deleted");
+    assert(remaining === null, "Malformed giveaway should be deleted");
   } finally {
     restoreFetch();
   }

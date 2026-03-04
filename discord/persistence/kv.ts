@@ -13,6 +13,7 @@ import { sqlite } from "https://esm.town/v/std/sqlite/main.ts";
 
 const TABLE = "kv_store";
 const SQLITE_TIMEOUT_MS = 5_000;
+const MAX_VALUE_SIZE = 512 * 1024; // 512 KB
 let initPromise: Promise<void> | null = null;
 
 /** Wraps sqlite.execute with a timeout to prevent indefinite hangs. */
@@ -63,9 +64,13 @@ export const kv = {
 
   async set(key: string, value: unknown, dueAt?: number): Promise<void> {
     await ensureTable();
+    const json = JSON.stringify(value);
+    if (json.length > MAX_VALUE_SIZE) {
+      throw new Error(`[KV] Value too large for key "${key}": ${json.length} bytes (max ${MAX_VALUE_SIZE})`);
+    }
     await sqliteExec({
       sql: `INSERT OR REPLACE INTO ${TABLE} (key, value, due_at) VALUES (?, ?, ?)`,
-      args: [key, JSON.stringify(value), dueAt ?? null],
+      args: [key, json, dueAt ?? null],
     });
   },
 

@@ -31,7 +31,7 @@ import { handleLinkedRolesRedirect, handleLinkedRolesCallback } from "../discord
 import { registerMetadataSchema } from "../discord/linked-roles/register-metadata.ts";
 import { handlePatreonWebhook } from "../discord/linked-roles/patreon-webhook.ts";
 import { timingSafeEqual } from "../discord/helpers/crypto.ts";
-import { finalizeAllLoggers } from "../discord/webhook/logger.ts";
+import { createLogger, finalizeAllLoggers } from "../discord/webhook/logger.ts";
 import "../discord/linked-roles/verifiers/always-verified.ts"; // side-effect: registers verifier
 
 async function checkPassword(req: Request): Promise<Response | null> {
@@ -127,6 +127,10 @@ export default async function(req: Request): Promise<Response> {
     }
 
     return handleInteraction(req);
+  } catch (err) {
+    const logger = createLogger("HTTP");
+    logger.error("Unhandled request error:", err);
+    return Response.json({ error: "Internal server error" }, { status: 500 });
   } finally {
     // Flush any buffered logs before the isolate terminates
     await finalizeAllLoggers();

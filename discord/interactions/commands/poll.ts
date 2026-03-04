@@ -119,25 +119,24 @@ export async function endPoll(guildId: string): Promise<void> {
   const key = pollKey(guildId);
 
   // Atomically claim the poll — only one caller can transition ended to true
+  // Set announceFailed:true as a fail-safe so crash between claim and announce is retried by cron
   const config = await kv.claimUpdate<PollConfig>(key, (current) => {
     if (current.ended) return null; // already ended, don't claim
-    return { ...current, ended: true };
+    return { ...current, ended: true, announceFailed: true, announceRetries: 0 };
   });
 
   if (!config) return; // no poll, already ended, or lost race
 
-  // Optimistic: schedule cleanup
-  await kv.set(key, config, Date.now() + CLEANUP_DELAY_MS);
-
   const announced = await announcePoll(guildId, config);
-  if (!announced) {
+  if (announced) {
+    // Success — clear fail-safe flag and schedule cleanup
+    const { announceFailed: _, announceRetries: __, ...clean } = config;
+    await kv.set(key, clean, Date.now() + CLEANUP_DELAY_MS);
+  } else {
     // Override with retry schedule so the cron re-attempts the announcement
+    // announceFailed is already set from claimUpdate
     try {
-      await kv.set(
-        key,
-        { ...config, announceFailed: true, announceRetries: 0 },
-        Date.now() + ANNOUNCE_RETRY_DELAY_MS,
-      );
+      await kv.set(key, config, Date.now() + ANNOUNCE_RETRY_DELAY_MS);
     } catch {
       logger.error(`Failed to schedule announce retry for poll ${guildId}`);
     }
@@ -268,7 +267,7 @@ export default defineCommand({
       const raceCheck = await kv.get<PollConfig>(pollKey(guildId));
       if (raceCheck && !raceCheck.ended) {
         // Another admin created one while we were posting — clean up orphaned message
-        await discordBotFetch("DELETE", `channels/${channelId}/messages/${config.messageId}`).catch(() => {});
+        await discordBotFetch("DELETE", `channels/${channelId}/messages/${config.messageId}`).catch((err) => logger.warn("Failed to clean up orphaned poll message:", err));
         return { success: false, error: "A poll was just created by another admin. Please try again." };
       }
 

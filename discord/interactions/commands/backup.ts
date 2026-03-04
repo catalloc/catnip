@@ -267,13 +267,20 @@ export default defineCommand({
         return { success: false, error: "This backup belongs to a different guild." };
       }
 
+      const errors: string[] = [];
+
       // Restore tags to KV
       if (backup.data.tags && Object.keys(backup.data.tags).length > 0) {
-        await kv.set(`tags:${guildId}`, backup.data.tags);
+        try {
+          await kv.set(`tags:${guildId}`, backup.data.tags);
+        } catch {
+          errors.push("tags");
+        }
       }
 
       // Restore templates to blob — sanitize names and strip invalid imageUrls
       if (backup.data.templates) {
+        let templateErrors = 0;
         for (const [rawName, entry] of Object.entries(backup.data.templates)) {
           const name = sanitizeName(rawName);
           if (!name) continue; // skip entries with empty sanitized name
@@ -281,13 +288,22 @@ export default defineCommand({
           if (sanitizedEntry.imageUrl && !isValidPublicUrl(sanitizedEntry.imageUrl)) {
             sanitizedEntry.imageUrl = undefined;
           }
-          await blob.setJSON(`template:${guildId}:${name}`, sanitizedEntry);
+          try {
+            await blob.setJSON(`template:${guildId}:${name}`, sanitizedEntry);
+          } catch {
+            templateErrors++;
+          }
         }
+        if (templateErrors > 0) errors.push(`${templateErrors} template(s)`);
       }
 
       // Restore counter
       if (backup.data.counter !== undefined) {
-        await kv.set(`counter:${guildId}`, backup.data.counter);
+        try {
+          await kv.set(`counter:${guildId}`, backup.data.counter);
+        } catch {
+          errors.push("counter");
+        }
       }
 
       const parts: string[] = [];
@@ -295,13 +311,17 @@ export default defineCommand({
       if (backup.data.templates) parts.push(`${Object.keys(backup.data.templates).length} templates`);
       if (backup.data.counter !== undefined) parts.push("counter");
 
+      const warning = errors.length > 0
+        ? `\n\n**Warning:** Failed to restore: ${errors.join(", ")}.`
+        : "";
+
       return {
         success: true,
         message: "",
         embed: {
-          title: "Backup Restored",
-          description: `Restored ${parts.join(", ") || "no data"} from backup \`${id}\`.`,
-          color: EmbedColors.SUCCESS,
+          title: errors.length > 0 ? "Backup Partially Restored" : "Backup Restored",
+          description: `Restored ${parts.join(", ") || "no data"} from backup \`${id}\`.${warning}`,
+          color: errors.length > 0 ? EmbedColors.WARNING : EmbedColors.SUCCESS,
         },
       };
     }

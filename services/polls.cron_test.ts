@@ -71,7 +71,7 @@ Deno.test("polls cron: API failure does not delete poll (retried next run)", asy
   }
 });
 
-Deno.test("polls cron: skips malformed entries", async () => {
+Deno.test("polls cron: deletes malformed entries", async () => {
   resetStore();
   const key = "poll:g1";
   // Missing channelId and messageId
@@ -79,9 +79,9 @@ Deno.test("polls cron: skips malformed entries", async () => {
   mockFetch({ default: { status: 200, body: { id: "msg1" } } });
   try {
     await runCron();
-    // Malformed entry is skipped — still in KV
+    // Malformed entry is cleaned up
     const remaining = await kv.get(key);
-    assert(remaining !== null, "Malformed poll should not be deleted");
+    assert(remaining === null, "Malformed poll should be deleted");
   } finally {
     restoreFetch();
   }

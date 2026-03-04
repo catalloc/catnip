@@ -131,7 +131,7 @@ export default defineComponent({
     } catch (err) {
       // KV write failed — clean up the orphaned Discord channel + release slot
       logger.error(`Failed to store ticket in KV for channel ${channelId}:`, err);
-      await discordBotFetch("DELETE", `channels/${channelId}`).catch(() => {});
+      await discordBotFetch("DELETE", `channels/${channelId}`).catch((err) => logger.warn("Failed to clean up orphaned ticket channel:", err));
       await releaseTicketSlot(guildId, userId);
       return { success: false, error: "Failed to create ticket. Please try again." };
     }

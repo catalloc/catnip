@@ -20,6 +20,7 @@ export interface CronOpts {
  */
 export async function runCron(opts: CronOpts): Promise<void> {
   const logger = createLogger(opts.name);
+  const start = Date.now();
   try {
     const entries = await kv.listDue(Date.now(), opts.prefix, opts.maxDue ?? 100);
 
@@ -28,7 +29,7 @@ export async function runCron(opts: CronOpts): Promise<void> {
     );
 
     if (entries.length > 0) {
-      logger.info(`Run complete: ${entries.length} item(s) processed`);
+      logger.info(`Run complete: ${entries.length} item(s) processed in ${Date.now() - start}ms`);
     }
   } catch (err) {
     logger.error("Cron run failed:", err);
@@ -63,7 +64,8 @@ export async function deliverWithRetry(opts: DeliverWithRetryOpts): Promise<void
   const value = entry.value as Record<string, unknown>;
 
   if (validate && !validate(value)) {
-    logger.warn(`Skipping malformed ${entityLabel}: ${entry.key}`);
+    logger.warn(`Deleting malformed ${entityLabel}: ${entry.key}`);
+    await kv.claimDelete(entry.key).catch(() => {});
     return;
   }
 

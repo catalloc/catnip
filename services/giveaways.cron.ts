@@ -24,7 +24,8 @@ export default async function () {
     async process(entry, logger) {
       const config = entry.value as GiveawayConfig;
       if (!config?.channelId || !config?.messageId) {
-        logger.warn(`Skipping malformed giveaway: ${entry.key}`);
+        logger.warn(`Deleting malformed giveaway: ${entry.key}`);
+        await kv.claimDelete(entry.key).catch(() => {});
         return;
       }
 
