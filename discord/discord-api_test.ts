@@ -1,6 +1,6 @@
 import "../test/_mocks/env.ts";
-import { assertEquals } from "../test/assert.ts";
-import { commandsPath, discordBotFetch } from "./discord-api.ts";
+import { assertEquals, assert } from "../test/assert.ts";
+import { commandsPath, discordBotFetch, remainingMs, _internals } from "./discord-api.ts";
 import { mockFetch, getCalls, restoreFetch, setNextThrow } from "../test/_mocks/fetch.ts";
 
 Deno.test("commandsPath: global commands", () => {
@@ -133,7 +133,6 @@ Deno.test("discordBotFetch: body provided includes Content-Type header", async (
 
 // --- commandsPath formats ---
 
-import { assert } from "../test/assert.ts";
 import { assertSnowflake } from "./helpers/snowflake.ts";
 
 Deno.test("commandsPath: guild commands includes guild segment", () => {
@@ -159,5 +158,91 @@ Deno.test("discordBotFetch: persistent network error returns error after retries
     assertEquals(result.ok, true);
   } finally {
     restoreFetch();
+  }
+});
+
+// --- Time budget tests (using _internals) ---
+
+Deno.test("remainingMs: returns positive value in fresh isolate", () => {
+  _internals.resetIsolateStart();
+  try {
+    const ms = remainingMs();
+    assert(ms > 0, `Expected positive remainingMs, got ${ms}`);
+    assert(ms <= 9.5 * 60 * 1000, `Expected at most 570000, got ${ms}`);
+  } finally {
+    _internals.resetIsolateStart();
+  }
+});
+
+Deno.test("discordBotFetch: 429 rejected when time budget insufficient", async () => {
+  // Set isolate start far in the past so remainingMs is very small
+  _internals.setIsolateStart(Date.now() - 9.5 * 60 * 1000 + 5000); // ~5s left
+  mockFetch({
+    responses: [
+      { status: 429, body: "rate limited", headers: { "Retry-After": "10" } },
+    ],
+  });
+  try {
+    const result = await discordBotFetch("GET", "test");
+    assertEquals(result.ok, false);
+    assertEquals(result.status, 429);
+    // Should NOT have retried (only 1 call)
+    assertEquals(getCalls().length, 1);
+  } finally {
+    restoreFetch();
+    _internals.resetIsolateStart();
+  }
+});
+
+Deno.test("discordBotFetch: 5xx not retried when time budget insufficient", async () => {
+  _internals.setIsolateStart(Date.now() - 9.5 * 60 * 1000 + 10000); // ~10s left, < 32s threshold
+  mockFetch({
+    responses: [
+      { status: 500, body: "server error" },
+    ],
+  });
+  try {
+    const result = await discordBotFetch("GET", "test");
+    assertEquals(result.ok, false);
+    assertEquals(result.status, 500);
+    assertEquals(getCalls().length, 1);
+  } finally {
+    restoreFetch();
+    _internals.resetIsolateStart();
+  }
+});
+
+Deno.test("discordBotFetch: network error not retried when time budget insufficient", async () => {
+  _internals.setIsolateStart(Date.now() - 9.5 * 60 * 1000 + 10000); // ~10s left
+  mockFetch({ default: { status: 200, body: {} } });
+  setNextThrow(new Error("network down"));
+  try {
+    const result = await discordBotFetch("GET", "test");
+    assertEquals(result.ok, false);
+    assertEquals(result.status, 0);
+    assert(result.error!.includes("network down"));
+    assertEquals(getCalls().length, 1);
+  } finally {
+    restoreFetch();
+    _internals.resetIsolateStart();
+  }
+});
+
+Deno.test("discordBotFetch: max retries returns error after 2 attempts", async () => {
+  _internals.resetIsolateStart(); // plenty of time
+  mockFetch({
+    responses: [
+      { status: 500, body: "fail1" },
+      { status: 500, body: "fail2" },
+    ],
+  });
+  try {
+    const result = await discordBotFetch("GET", "test");
+    assertEquals(result.ok, false);
+    assertEquals(result.status, 500);
+    assertEquals(getCalls().length, 2);
+  } finally {
+    restoreFetch();
+    _internals.resetIsolateStart();
   }
 });

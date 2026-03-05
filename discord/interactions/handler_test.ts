@@ -205,17 +205,265 @@ Deno.test("handleInteraction: unknown command returns error", async () => {
 });
 
 Deno.test("handleInteraction: deferred command returns type 5", async () => {
-  // The "echo" command has deferred: false, but most commands default to deferred.
-  // We test that an unknown command that somehow made it past the check wouldn't matter,
-  // but let's test with a real command that IS deferred. "server" is deferred.
-  // Actually, we need to import the registry which is already populated.
-  // Let's just test with the "counter" command if it exists and is deferred.
-  // Simpler: verify the PING path (already tested above) and the unknown command path.
-  // The deferred path is hard to test in integration without side effects.
-  // Skip this specific test as the handler architecture makes it difficult to test
-  // without a fully wired command.
-  // Instead, test that buildPayload handles deferred data correctly.
   const payload = buildPayload("test", { embed: { title: "T" } }, true);
   assertEquals(payload.flags, 64);
   assertEquals(payload.embeds, [{ title: "T" }]);
 });
+
+// --- Integration tests using signedRequest ---
+
+import "../../test/_mocks/sqlite.ts";
+import { mockFetch, restoreFetch, getCalls } from "../../test/_mocks/fetch.ts";
+import { kv } from "../../discord/persistence/kv.ts";
+import { sqlite } from "https://esm.town/v/std/sqlite/main.ts";
+
+function resetStore() {
+  (sqlite as any)._reset();
+}
+
+Deno.test("handleInteraction: guild allowlist blocks non-allowed guild", async () => {
+  const origAllowed = Deno.env.get("ALLOWED_GUILD_IDS");
+  Deno.env.set("ALLOWED_GUILD_IDS", "999999999999999999");
+  try {
+    const req = await signedRequest(JSON.stringify({
+      type: 2,
+      guild_id: "111111111111111111",
+      data: { name: "ping", options: [] },
+      member: { user: { id: "111" }, roles: [], permissions: "0" },
+      id: "12345678",
+      token: "tok",
+    }));
+    const res = await handleInteraction(req);
+    const body = await res.json();
+    assertStringIncludes(body.data.content, "not authorized for this server");
+  } finally {
+    if (origAllowed) Deno.env.set("ALLOWED_GUILD_IDS", origAllowed);
+    else Deno.env.delete("ALLOWED_GUILD_IDS");
+  }
+});
+
+Deno.test("handleInteraction: guild allowlist allows PING regardless", async () => {
+  const origAllowed = Deno.env.get("ALLOWED_GUILD_IDS");
+  Deno.env.set("ALLOWED_GUILD_IDS", "999999999999999999");
+  try {
+    const req = await signedRequest(JSON.stringify({ type: 1 }));
+    const res = await handleInteraction(req);
+    const body = await res.json();
+    assertEquals(body.type, 1); // PONG
+  } finally {
+    if (origAllowed) Deno.env.set("ALLOWED_GUILD_IDS", origAllowed);
+    else Deno.env.delete("ALLOWED_GUILD_IDS");
+  }
+});
+
+Deno.test("handleInteraction: admin-only command rejects non-admin user", async () => {
+  const origAllowed = Deno.env.get("ALLOWED_GUILD_IDS");
+  Deno.env.delete("ALLOWED_GUILD_IDS");
+  resetStore();
+  mockFetch({ default: { status: 200, body: {} } });
+  try {
+    const req = await signedRequest(JSON.stringify({
+      type: 2,
+      guild_id: "100000000000000001",
+      data: { name: "server", options: [] },
+      member: { user: { id: "222222222222222222" }, roles: [], permissions: "0" },
+      id: "12345678",
+      token: "tok",
+    }));
+    const res = await handleInteraction(req);
+    const body = await res.json();
+    assertStringIncludes(body.data.content, "not authorized");
+  } finally {
+    restoreFetch();
+    if (origAllowed) Deno.env.set("ALLOWED_GUILD_IDS", origAllowed);
+    else Deno.env.delete("ALLOWED_GUILD_IDS");
+    resetStore();
+  }
+});
+
+Deno.test({ name: "handleInteraction: admin-only command allows admin user", sanitizeOps: false, sanitizeResources: false, fn: async () => {
+  const origAllowed = Deno.env.get("ALLOWED_GUILD_IDS");
+  Deno.env.delete("ALLOWED_GUILD_IDS");
+  resetStore();
+  mockFetch({ default: { status: 200, body: {} } });
+  try {
+    const req = await signedRequest(JSON.stringify({
+      type: 2,
+      guild_id: "100000000000000001",
+      data: {
+        name: "server",
+        options: [{
+          name: "info",
+          type: 1,
+        }],
+      },
+      member: { user: { id: "333333333333333333" }, roles: [], permissions: "8" }, // ADMINISTRATOR bit
+      id: "12345678",
+      token: "tok",
+    }));
+    const res = await handleInteraction(req);
+    const body = await res.json();
+    // Should NOT be "not authorized" — server command with admin perms should work
+    assert(!body.data?.content?.includes("not authorized"), `Expected authorized, got: ${body.data?.content}`);
+  } finally {
+    restoreFetch();
+    if (origAllowed) Deno.env.set("ALLOWED_GUILD_IDS", origAllowed);
+    else Deno.env.delete("ALLOWED_GUILD_IDS");
+    resetStore();
+  }
+}});
+
+Deno.test({ name: "handleInteraction: cooldown blocks rapid repeat", sanitizeOps: false, sanitizeResources: false, fn: async () => {
+  const origAllowed = Deno.env.get("ALLOWED_GUILD_IDS");
+  Deno.env.delete("ALLOWED_GUILD_IDS");
+  resetStore();
+  // Pre-seed cooldown key with future expiry for slow-echo (which has cooldown: 10)
+  const userId = "444444444444444444";
+  await kv.set(`cooldown:slow-echo:${userId}`, Date.now() + 30_000);
+  mockFetch({ default: { status: 200, body: {} } });
+  try {
+    const req = await signedRequest(JSON.stringify({
+      type: 2,
+      guild_id: "100000000000000001",
+      data: { name: "slow-echo", options: [{ name: "message", type: 3, value: "test" }] },
+      member: { user: { id: userId }, roles: [], permissions: "0" },
+      id: "12345678",
+      token: "tok",
+      application_id: "11111111111111111",
+    }));
+    const res = await handleInteraction(req);
+    const body = await res.json();
+    assertStringIncludes(body.data.content, "Please wait");
+  } finally {
+    restoreFetch();
+    if (origAllowed) Deno.env.set("ALLOWED_GUILD_IDS", origAllowed);
+    else Deno.env.delete("ALLOWED_GUILD_IDS");
+    resetStore();
+  }
+}});
+
+Deno.test("handleInteraction: fast command returns type 4 with response", async () => {
+  const origAllowed = Deno.env.get("ALLOWED_GUILD_IDS");
+  Deno.env.delete("ALLOWED_GUILD_IDS");
+  resetStore();
+  mockFetch({ default: { status: 200, body: {} } });
+  try {
+    const req = await signedRequest(JSON.stringify({
+      type: 2,
+      guild_id: "100000000000000001",
+      data: { name: "echo", options: [{ name: "message", type: 3, value: "hello world" }] },
+      member: { user: { id: "555555555555555555" }, roles: [], permissions: "0" },
+      id: "12345678",
+      token: "tok",
+    }));
+    const res = await handleInteraction(req);
+    const body = await res.json();
+    assertEquals(body.type, 4); // CHANNEL_MESSAGE_WITH_SOURCE
+    assertStringIncludes(body.data.content, "hello world");
+  } finally {
+    restoreFetch();
+    if (origAllowed) Deno.env.set("ALLOWED_GUILD_IDS", origAllowed);
+    else Deno.env.delete("ALLOWED_GUILD_IDS");
+    resetStore();
+  }
+});
+
+Deno.test("handleInteraction: button component returns handler response", async () => {
+  const origAllowed = Deno.env.get("ALLOWED_GUILD_IDS");
+  Deno.env.delete("ALLOWED_GUILD_IDS");
+  mockFetch({ default: { status: 200, body: {} } });
+  try {
+    const req = await signedRequest(JSON.stringify({
+      type: 3, // MESSAGE_COMPONENT
+      guild_id: "100000000000000001",
+      data: { component_type: 2, custom_id: "example-button" },
+      member: { user: { id: "666" }, roles: [], permissions: "0" },
+      id: "12345678",
+      token: "tok",
+    }));
+    const res = await handleInteraction(req);
+    const body = await res.json();
+    assertEquals(body.type, 4);
+    assert(body.data.content);
+  } finally {
+    restoreFetch();
+    if (origAllowed) Deno.env.set("ALLOWED_GUILD_IDS", origAllowed);
+    else Deno.env.delete("ALLOWED_GUILD_IDS");
+  }
+});
+
+Deno.test("handleInteraction: select component returns handler response", async () => {
+  const origAllowed = Deno.env.get("ALLOWED_GUILD_IDS");
+  Deno.env.delete("ALLOWED_GUILD_IDS");
+  mockFetch({ default: { status: 200, body: {} } });
+  try {
+    const req = await signedRequest(JSON.stringify({
+      type: 3, // MESSAGE_COMPONENT
+      guild_id: "100000000000000001",
+      data: { component_type: 3, custom_id: "color-select", values: ["blue"] },
+      member: { user: { id: "777" }, roles: [], permissions: "0" },
+      id: "12345678",
+      token: "tok",
+    }));
+    const res = await handleInteraction(req);
+    const body = await res.json();
+    // color-select uses updateMessage: true, so type is 7 (UPDATE_MESSAGE)
+    assertEquals(body.type, 7);
+    assert(body.data);
+  } finally {
+    restoreFetch();
+    if (origAllowed) Deno.env.set("ALLOWED_GUILD_IDS", origAllowed);
+    else Deno.env.delete("ALLOWED_GUILD_IDS");
+  }
+});
+
+Deno.test("handleInteraction: admin-only component rejects non-admin", async () => {
+  const origAllowed = Deno.env.get("ALLOWED_GUILD_IDS");
+  Deno.env.delete("ALLOWED_GUILD_IDS");
+  resetStore();
+  mockFetch({ default: { status: 200, body: {} } });
+  try {
+    const req = await signedRequest(JSON.stringify({
+      type: 3, // MESSAGE_COMPONENT
+      guild_id: "100000000000000001",
+      data: { component_type: 2, custom_id: "ticket-close:100000000000000001:999" },
+      member: { user: { id: "888888888888888888" }, roles: [], permissions: "0" },
+      id: "12345678",
+      token: "tok",
+    }));
+    const res = await handleInteraction(req);
+    const body = await res.json();
+    assertStringIncludes(body.data.content, "not authorized");
+  } finally {
+    restoreFetch();
+    if (origAllowed) Deno.env.set("ALLOWED_GUILD_IDS", origAllowed);
+    else Deno.env.delete("ALLOWED_GUILD_IDS");
+    resetStore();
+  }
+});
+
+Deno.test({ name: "handleInteraction: deferred command returns type 5 (slow-echo)", sanitizeOps: false, sanitizeResources: false, fn: async () => {
+  const origAllowed = Deno.env.get("ALLOWED_GUILD_IDS");
+  Deno.env.delete("ALLOWED_GUILD_IDS");
+  resetStore();
+  mockFetch({ default: { status: 200, body: {} } });
+  try {
+    const req = await signedRequest(JSON.stringify({
+      type: 2,
+      guild_id: "100000000000000001",
+      data: { name: "slow-echo", options: [{ name: "message", type: 3, value: "deferred test" }] },
+      member: { user: { id: "999999999999999999" }, roles: [], permissions: "0" },
+      id: "12345678",
+      token: "tok",
+      application_id: "11111111111111111",
+    }));
+    const res = await handleInteraction(req);
+    const body = await res.json();
+    assertEquals(body.type, 5); // DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
+  } finally {
+    restoreFetch();
+    if (origAllowed) Deno.env.set("ALLOWED_GUILD_IDS", origAllowed);
+    else Deno.env.delete("ALLOWED_GUILD_IDS");
+    resetStore();
+  }
+}});

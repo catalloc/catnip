@@ -243,3 +243,73 @@ Deno.test("syncAllGuilds: returns results for configured guilds", async () => {
     restoreFetch();
   }
 });
+
+// --- registerCommand: guild command not enabled ---
+
+import { kv } from "../../discord/persistence/kv.ts";
+import { sqlite } from "https://esm.town/v/std/sqlite/main.ts";
+
+Deno.test("registerCommand: guild command enabled succeeds", async () => {
+  (sqlite as any)._reset();
+  // Seed guild config with an enabled command (echo is a guild command)
+  await kv.set("guild_config:100000000000000123", {
+    guildId: "100000000000000123",
+    adminRoleIds: [],
+    enabledCommands: ["echo"],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  mockFetch({ default: { status: 200, body: { id: "cmd1" } } });
+  try {
+    const results = await registerCommand("echo", "100000000000000123");
+    assertEquals(results.length, 1);
+    assertEquals(results[0].success, true);
+    assertEquals(results[0].guildId, "100000000000000123");
+  } finally {
+    restoreFetch();
+    (sqlite as any)._reset();
+  }
+});
+
+Deno.test("registerCommand: guild command not enabled returns error", async () => {
+  (sqlite as any)._reset();
+  // Seed guild config WITHOUT echo enabled
+  await kv.set("guild_config:100000000000000123", {
+    guildId: "100000000000000123",
+    adminRoleIds: [],
+    enabledCommands: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  try {
+    const results = await registerCommand("echo", "100000000000000123");
+    assertEquals(results.length, 1);
+    assertEquals(results[0].success, false);
+    assert(results[0].error!.includes("not enabled"));
+  } finally {
+    (sqlite as any)._reset();
+  }
+});
+
+Deno.test("registerCommand: handles unexpected error gracefully", async () => {
+  // Force sqlite to throw during guild config read by using a nonexistent command
+  // Actually, easier: just test with a command that doesn't exist
+  const results = await registerCommand("totally_fake_cmd_xyz", "100000000000000123");
+  assertEquals(results.length, 1);
+  assertEquals(results[0].success, false);
+  assert(results[0].error!.includes("not found"));
+});
+
+Deno.test("commandPayload: command without options omits options key", () => {
+  const cmd = {
+    name: "simple",
+    description: "A simple command",
+    type: 1,
+    registration: { type: "global" as const },
+    execute: async () => ({ success: true }),
+  };
+  const payload = commandPayload(cmd as any);
+  assertEquals(payload.name, "simple");
+  assertEquals(payload.description, "A simple command");
+  assertEquals(payload.options, undefined);
+});

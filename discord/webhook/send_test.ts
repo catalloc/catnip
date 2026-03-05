@@ -277,3 +277,86 @@ Deno.test("send: no webhook URL returns error", async () => {
     if (origEnv) Deno.env.set("DISCORD_CONSOLE_WEBHOOK", origEnv);
   }
 });
+
+// --- fallback webhook on 4xx ---
+
+Deno.test("send: fallback webhook used on 4xx from primary", async () => {
+  const origEnv = Deno.env.get("DISCORD_CONSOLE");
+  Deno.env.set("DISCORD_CONSOLE", "https://discord.com/api/webhooks/fallback/token");
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = (input: string | URL | Request) => {
+    callCount++;
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    if (url.includes("primary")) {
+      return Promise.resolve(new Response("Not Found", { status: 404 }));
+    }
+    return Promise.resolve(new Response(JSON.stringify({ id: "fb1" }), { status: 200 }));
+  };
+  try {
+    const result = await send("test message", "https://discord.com/api/webhooks/primary/token");
+    assertEquals(result.success, true);
+    assertEquals(result.usedFallback, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (origEnv) Deno.env.set("DISCORD_CONSOLE", origEnv);
+    else Deno.env.delete("DISCORD_CONSOLE");
+  }
+});
+
+// --- 429 rate limit retry in sendChunked ---
+
+Deno.test({ name: "send: 429 rate limit retries in sendChunked", sanitizeOps: false, sanitizeResources: false, fn: async () => {
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = () => {
+    callCount++;
+    if (callCount === 1) {
+      return Promise.resolve(new Response("rate limited", {
+        status: 429,
+        headers: { "Retry-After": "0.01" },
+      }));
+    }
+    return Promise.resolve(new Response(JSON.stringify({ id: "1" }), { status: 200 }));
+  };
+  try {
+    const result = await send("short msg", "https://discord.com/api/webhooks/test/token");
+    assertEquals(result.success, true);
+    assert(callCount >= 2, "Should have retried after 429");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}});
+
+// --- network error returns failure ---
+
+Deno.test("send: network error returns failure", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.reject(new Error("network down"));
+  try {
+    const result = await send("msg", "https://discord.com/api/webhooks/test/token");
+    assertEquals(result.success, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// --- string content splits into correct payload ---
+
+Deno.test("send: string content splits into correct payload", async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies: string[] = [];
+  globalThis.fetch = (_input: string | URL | Request, init?: RequestInit) => {
+    bodies.push(init?.body as string);
+    return Promise.resolve(new Response(JSON.stringify({ id: "1" }), { status: 200 }));
+  };
+  try {
+    const result = await send("hello world", "https://discord.com/api/webhooks/test/token");
+    assertEquals(result.success, true);
+    assert(bodies.length > 0);
+    const payload = JSON.parse(bodies[0]);
+    assertEquals(payload.content, "hello world");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

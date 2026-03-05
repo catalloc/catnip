@@ -200,3 +200,86 @@ Deno.test("handleLinkedRolesCallback: global_name null falls back to username", 
     restoreFetch();
   }
 });
+
+// --- verifier error returns error page ---
+
+Deno.test("handleLinkedRolesCallback: verifier error returns error page", async () => {
+  const errorVerifier: Verifier = {
+    name: "ErrorVerifier",
+    metadata: [],
+    scopes: [],
+    verify: async () => { throw new Error("verification failed"); },
+  };
+  setVerifier(errorVerifier);
+  const validState = await generateState();
+
+  mockFetch({
+    responses: [
+      { status: 200, body: { access_token: "tok", token_type: "Bearer", expires_in: 3600, refresh_token: "r", scope: "identify" } },
+      { status: 200, body: { id: "123", username: "user1", discriminator: "0", avatar: null, global_name: "User" } },
+    ],
+  });
+  try {
+    const req = new Request(`https://example.com/linked-roles/callback?code=c&state=${validState}`);
+    const res = await handleLinkedRolesCallback(req);
+    const text = await res.text();
+    assert(text.includes("went wrong") || text.includes("error") || text.includes("Error"));
+  } finally {
+    restoreFetch();
+    setVerifier(testVerifier); // restore
+  }
+});
+
+// --- sanitizes secrets in error logs ---
+
+Deno.test("handleLinkedRolesCallback: sanitizes secrets in error logs", async () => {
+  const tokenLeakVerifier: Verifier = {
+    name: "LeakVerifier",
+    metadata: [],
+    scopes: [],
+    verify: async () => { throw new Error("Failed with Bot MTIzNDU2Nzg5.abc.secret"); },
+  };
+  setVerifier(tokenLeakVerifier);
+  const validState = await generateState();
+
+  // Capture console output from logger
+  const logged: string[] = [];
+  const origLog = console.log;
+  console.log = (msg: string) => logged.push(msg);
+
+  mockFetch({
+    responses: [
+      { status: 200, body: { access_token: "tok", token_type: "Bearer", expires_in: 3600, refresh_token: "r", scope: "identify" } },
+      { status: 200, body: { id: "123", username: "user2", discriminator: "0", avatar: null, global_name: "User2" } },
+    ],
+  });
+  try {
+    const req = new Request(`https://example.com/linked-roles/callback?code=c&state=${validState}`);
+    await handleLinkedRolesCallback(req);
+    // Check that logged messages don't contain the raw token
+    const allLogs = logged.join(" ");
+    assert(!allLogs.includes("MTIzNDU2Nzg5"), "Should have redacted Bot token in logs");
+  } finally {
+    restoreFetch();
+    console.log = origLog;
+    setVerifier(testVerifier);
+  }
+});
+
+// --- BOT_URL config for redirect_uri ---
+
+Deno.test("handleLinkedRolesRedirect: uses BOT_URL config for redirect_uri", async () => {
+  const origBotUrl = Deno.env.get("BOT_URL");
+  Deno.env.set("BOT_URL", "https://mybot.example.com");
+  try {
+    setVerifier(testVerifier);
+    const req = new Request("https://different-origin.com/linked-roles");
+    const res = await handleLinkedRolesRedirect(req);
+    const location = res.headers.get("Location")!;
+    const params = new URLSearchParams(location.split("?")[1]);
+    assertEquals(params.get("redirect_uri"), "https://mybot.example.com/linked-roles/callback");
+  } finally {
+    if (origBotUrl) Deno.env.set("BOT_URL", origBotUrl);
+    else Deno.env.delete("BOT_URL");
+  }
+});

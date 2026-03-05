@@ -320,3 +320,108 @@ Deno.test("finalizeAllLoggers: completes even with no loggers", async () => {
   // createLogger adds to _instances, but this tests the function doesn't error
   await finalizeAllLoggers();
 });
+
+// --- scheduleFlush timer ---
+
+Deno.test({ name: "logger: scheduleFlush fires after batchIntervalMs", sanitizeOps: false, sanitizeResources: false, fn: async () => {
+  const sent: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (_input: string | URL | Request, init?: RequestInit) => {
+    sent.push(init?.body as string);
+    return Promise.resolve(new Response("ok", { status: 200 }));
+  };
+  try {
+    const logger = new DiscordLogger({
+      context: "TimerTest",
+      webhookUrl: "https://discord.com/api/webhooks/test/token",
+      fallbackToConsole: false,
+      batchIntervalMs: 50, // very short interval
+      maxBatchSize: 100,
+    });
+    logger.info("timed message");
+    // Wait for the timer to fire
+    await new Promise((r) => setTimeout(r, 200));
+    assert(sent.length > 0, "scheduleFlush should have fired and sent");
+    assert(sent[0].includes("timed message"));
+    await logger.finalize();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}});
+
+Deno.test("logger: finalize flushes immediately regardless of timer", async () => {
+  const sent: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (_input: string | URL | Request, init?: RequestInit) => {
+    sent.push(init?.body as string);
+    return Promise.resolve(new Response("ok", { status: 200 }));
+  };
+  try {
+    const logger = new DiscordLogger({
+      context: "FinalizeTest",
+      webhookUrl: "https://discord.com/api/webhooks/test/token",
+      fallbackToConsole: false,
+      batchIntervalMs: 999_999, // very long — should never fire naturally
+    });
+    logger.info("finalize me");
+    await logger.finalize();
+    assert(sent.length > 0, "finalize should flush immediately");
+    assert(sent[0].includes("finalize me"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("logger: flush error with fallbackToConsole false skips console dump", async () => {
+  const consoleErrors: string[] = [];
+  const origError = console.error;
+  const origLog = console.log;
+  console.error = (msg: string) => consoleErrors.push(msg);
+  console.log = () => {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.reject(new Error("send failed"));
+  try {
+    const logger = new DiscordLogger({
+      context: "NoDump",
+      webhookUrl: "https://discord.com/api/webhooks/test/token",
+      fallbackToConsole: false,
+    });
+    logger.info("test");
+    await logger.finalize();
+    // With fallbackToConsole: false, should NOT dump batch to console.error
+    const dumpMsgs = consoleErrors.filter((m) => m.includes("dumping to console"));
+    assertEquals(dumpMsgs.length, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = origError;
+    console.log = origLog;
+  }
+});
+
+Deno.test("logger: formatBatch output contains level emojis", async () => {
+  const sent: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (_input: string | URL | Request, init?: RequestInit) => {
+    sent.push(init?.body as string);
+    return Promise.resolve(new Response("ok", { status: 200 }));
+  };
+  try {
+    const logger = new DiscordLogger({
+      context: "EmojiTest",
+      webhookUrl: "https://discord.com/api/webhooks/test/token",
+      fallbackToConsole: false,
+      batchIntervalMs: 999_999,
+    });
+    logger.info("info msg");
+    logger.warn("warn msg");
+    await logger.finalize();
+    assert(sent.length > 0);
+    const payload = JSON.parse(sent[0]);
+    const content = payload.content as string;
+    // info emoji and warn emoji should be present
+    assert(content.includes("\u2139\uFE0F"), "Should contain info emoji");
+    assert(content.includes("\u26A0\uFE0F"), "Should contain warn emoji");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

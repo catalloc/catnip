@@ -305,3 +305,87 @@ Deno.test("kv.claimUpdate: returns null for missing entry (no insert)", async ()
   assertEquals(result, null);
   assertEquals(await kv.get("nonexistent2"), null);
 });
+
+// --- CAS retry exhaustion ---
+
+Deno.test("kv.update: throws on CAS retry exhaustion", async () => {
+  resetStore();
+  await kv.set("cas-key", { n: 1 });
+  // Monkey-patch sqlite.execute to force rowsAffected: 0 on UPDATE and INSERT OR IGNORE
+  const origExec = (sqlite as any).execute;
+  (sqlite as any).execute = async (input: any) => {
+    const sql = typeof input === "string" ? input : input.sql;
+    if (/^UPDATE/i.test(sql.trim()) || /INSERT\s+OR\s+IGNORE/i.test(sql.trim())) {
+      return { rows: [], rowsAffected: 0, columns: [] };
+    }
+    return origExec.call(sqlite, input);
+  };
+  try {
+    let threw = false;
+    try {
+      await kv.update<{ n: number }>("cas-key", (c) => ({ n: (c?.n ?? 0) + 1 }), 2);
+    } catch (e) {
+      threw = true;
+      assert((e as Error).message.includes("CAS conflict"));
+    }
+    assertEquals(threw, true);
+  } finally {
+    (sqlite as any).execute = origExec;
+  }
+});
+
+Deno.test("kv.claimUpdate: returns null on CAS retry exhaustion", async () => {
+  resetStore();
+  await kv.set("claim-cas", { n: 1 });
+  const origExec = (sqlite as any).execute;
+  (sqlite as any).execute = async (input: any) => {
+    const sql = typeof input === "string" ? input : input.sql;
+    if (/^UPDATE/i.test(sql.trim())) {
+      return { rows: [], rowsAffected: 0, columns: [] };
+    }
+    return origExec.call(sqlite, input);
+  };
+  try {
+    const result = await kv.claimUpdate<{ n: number }>("claim-cas", (c) => ({ n: c.n + 1 }), 2);
+    assertEquals(result, null);
+  } finally {
+    (sqlite as any).execute = origExec;
+  }
+});
+
+Deno.test("kv.listDue: skips entries with corrupt JSON", async () => {
+  resetStore();
+  // Insert valid entry
+  await kv.set("valid", { ok: true }, 100);
+  // Insert corrupt JSON via direct sqlite.execute
+  await sqlite.execute({
+    sql: "INSERT OR REPLACE INTO kv_store (key, value, due_at) VALUES (?, ?, ?)",
+    args: ["corrupt", "not-valid-json{{{", 100],
+  });
+  const warnings: string[] = [];
+  const origWarn = console.warn;
+  console.warn = (msg: string) => warnings.push(msg);
+  try {
+    const due = await kv.listDue(500);
+    assertEquals(due.length, 1);
+    assertEquals(due[0].key, "valid");
+  } finally {
+    console.warn = origWarn;
+  }
+});
+
+Deno.test("kv.claimUpdate: returns null for corrupt JSON value", async () => {
+  resetStore();
+  await sqlite.execute({
+    sql: "INSERT OR REPLACE INTO kv_store (key, value, due_at) VALUES (?, ?, ?)",
+    args: ["bad-json", "<<<not json>>>", null],
+  });
+  const origWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const result = await kv.claimUpdate<{ x: number }>("bad-json", (c) => ({ x: c.x + 1 }));
+    assertEquals(result, null);
+  } finally {
+    console.warn = origWarn;
+  }
+});

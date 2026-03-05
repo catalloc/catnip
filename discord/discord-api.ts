@@ -10,7 +10,7 @@ import { cryptoJitter } from "./helpers/crypto.ts";
 import { assertSnowflake } from "./helpers/snowflake.ts";
 
 /** Isolate birth time — resets on each Val Town cold start. */
-const ISOLATE_START = Date.now();
+let ISOLATE_START = Date.now();
 /** Leave 30s buffer before Val Town's 10-min hard kill. */
 const MAX_ISOLATE_MS = 9.5 * 60 * 1000;
 
@@ -116,3 +116,8 @@ export async function discordBotFetch(
 
   return { ok: false, status: 0, error: "Max retries exceeded" };
 }
+
+export const _internals = {
+  resetIsolateStart() { ISOLATE_START = Date.now(); },
+  setIsolateStart(ms: number) { ISOLATE_START = ms; },
+};
