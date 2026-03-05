@@ -13,14 +13,15 @@ export default defineComponent({
   customId: "ticket-close-modal:",
   match: "prefix",
   type: "modal",
+  adminOnly: true,
 
-  async execute({ customId, userId, fields }) {
+  async execute({ customId, guildId: ctxGuildId, userId, fields }) {
     // Parse "ticket-close-modal:{guildId}:{channelId}"
     const parts = customId.split(":");
     const guildId = parts[1];
     const channelId = parts[2];
 
-    if (!guildId || !channelId) {
+    if (!guildId || !channelId || guildId !== ctxGuildId) {
       return { success: false, error: "Invalid ticket reference." };
     }
 

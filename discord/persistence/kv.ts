@@ -35,6 +35,9 @@ function ensureTable(): Promise<void> {
     await sqliteExec(
       `CREATE INDEX IF NOT EXISTS idx_kv_due_at ON ${TABLE} (due_at) WHERE due_at IS NOT NULL`,
     );
+    await sqliteExec(
+      `CREATE INDEX IF NOT EXISTS idx_kv_due_at_key ON ${TABLE} (due_at, key) WHERE due_at IS NOT NULL`,
+    );
   })();
 }
 

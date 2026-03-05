@@ -30,7 +30,7 @@ export default defineComponent({
   type: "modal",
   adminOnly: true,
 
-  async execute({ customId, userId, fields }) {
+  async execute({ customId, guildId: ctxGuildId, userId, fields }) {
     // Parse customId: template-modal:{action}:{guildId}:{name}
     const parts = customId.split(":");
     if (parts.length < 4) {
@@ -39,6 +39,10 @@ export default defineComponent({
 
     const action = parts[1]; // "create" or "edit"
     const guildId = parts[2];
+
+    if (guildId !== ctxGuildId) {
+      return { success: false, error: "Invalid modal reference." };
+    }
     const name = parts.slice(3).join(":"); // name could theoretically contain colons (unlikely after sanitize)
 
     const title = (fields?.template_title ?? "").trim();

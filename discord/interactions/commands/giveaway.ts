@@ -143,7 +143,11 @@ export async function endGiveaway(guildId: string): Promise<void> {
   if (announced) {
     // Success — clear fail-safe flag and schedule cleanup
     const { announceFailed: _, announceRetries: __, ...clean } = config;
-    await kv.set(key, clean, Date.now() + CLEANUP_DELAY_MS);
+    try {
+      await kv.set(key, clean, Date.now() + CLEANUP_DELAY_MS);
+    } catch {
+      logger.error(`Failed to clear announceFailed flag for giveaway ${guildId}`);
+    }
   } else {
     // Override with retry schedule so the cron re-attempts the announcement
     // announceFailed is already set from claimUpdate

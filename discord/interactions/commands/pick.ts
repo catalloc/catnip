@@ -6,6 +6,7 @@
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
 import { secureRandomIndex } from "../../helpers/crypto.ts";
+import { sanitizeMentions } from "../../helpers/sanitize.ts";
 
 export default defineCommand({
   name: "pick",
@@ -31,7 +32,7 @@ export default defineCommand({
     if (raw.length < 2) {
       return { success: false, error: "Provide at least 2 comma-separated choices." };
     }
-    const pick = raw[secureRandomIndex(raw.length)];
+    const pick = sanitizeMentions(raw[secureRandomIndex(raw.length)]);
     return { success: true, message: `I picked: **${pick}**` };
   },
 });

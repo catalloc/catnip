@@ -5,13 +5,7 @@
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
-
-/** Strip @everyone, @here, and role/user mentions to prevent abuse */
-function sanitizeMentions(text: string): string {
-  return text
-    .replace(/@(everyone|here)/gi, "@\u200B$1")
-    .replace(/<@[&!]?\d+>/g, "[mention removed]");
-}
+import { sanitizeMentions } from "../../helpers/sanitize.ts";
 
 export default defineCommand({
   name: "echo",

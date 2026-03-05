@@ -186,18 +186,29 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
     }
   }
 
-  // KV-backed cooldown — only runs when a command explicitly opts in
+  // KV-backed cooldown — atomic check-and-set to prevent burst bypass
   if (command.cooldown && command.cooldown > 0) {
     const cooldownKey = `cooldown:${commandName}:${userId}`;
-    const expiry = await kv.get<number>(cooldownKey);
-    if (expiry !== null && Date.now() < expiry) {
-      const remaining = Math.ceil((expiry - Date.now()) / 1000);
+    let onCooldown = false;
+    let remaining = 0;
+    try {
+      await kv.update<number | null>(cooldownKey, (expiry) => {
+        const now = Date.now();
+        if (expiry !== null && now < expiry) {
+          onCooldown = true;
+          remaining = Math.ceil((expiry - now) / 1000);
+          return expiry; // no-op, keep existing cooldown
+        }
+        return now + command.cooldown! * 1000;
+      });
+    } catch {
+      // CAS exhaustion — allow through rather than block
+    }
+    if (onCooldown) {
       return ephemeralResponse(
         `Please wait ${remaining} second${remaining !== 1 ? "s" : ""} before using this command again.`,
       );
     }
-    const cooldownExpiry = Date.now() + command.cooldown * 1000;
-    await kv.set(cooldownKey, cooldownExpiry, cooldownExpiry);
   }
 
   // Extract command options with subcommand support
@@ -503,11 +514,12 @@ export async function handleInteraction(req: Request): Promise<Response> {
       return new Response("Invalid JSON", { status: 400 });
     }
 
-    // Guild allowlist check — skip for PING (required by Discord); block DMs and unlisted guilds
+    // Guild allowlist check — cache once per request to avoid re-parsing
+    const allowedIds = CONFIG.allowedGuildIds;
     if (
-      CONFIG.allowedGuildIds.length > 0 &&
+      allowedIds.length > 0 &&
       body.type !== INTERACTION_TYPES.PING &&
-      (!body.guild_id || !CONFIG.allowedGuildIds.includes(body.guild_id))
+      (!body.guild_id || !allowedIds.includes(body.guild_id))
     ) {
       return ephemeralResponse("This bot is not authorized for this server.");
     }

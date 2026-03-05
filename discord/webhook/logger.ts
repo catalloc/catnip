@@ -202,9 +202,10 @@ export function createLogger(
  * Capped at 8 seconds to prevent blocking isolate shutdown.
  */
 export async function finalizeAllLoggers(): Promise<void> {
+  const toFlush = [..._instances];
   let timer: ReturnType<typeof setTimeout>;
   await Promise.race([
-    Promise.allSettled(_instances.map((l) => l.finalize())).finally(() => clearTimeout(timer)),
+    Promise.allSettled(toFlush.map((l) => l.finalize())).finally(() => clearTimeout(timer)),
     new Promise<void>((resolve) => {
       timer = setTimeout(resolve, 8_000);
     }),

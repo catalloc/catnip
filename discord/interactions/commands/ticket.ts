@@ -186,26 +186,16 @@ export async function closeTicket(
   // Set due_at for auto-deletion
   await kv.set(key, ticket, Date.now() + DELETE_DELAY_MS);
 
-  // Lock channel — deny SEND_MESSAGES for @everyone
-  const lockResult = await discordBotFetch(
-    "PUT",
-    `channels/${channelId}/permissions/${guildId}`,
-    { id: guildId, type: 0, deny: "2048" }, // SEND_MESSAGES
-  );
-  if (!lockResult.ok) {
-    logger.error(`Failed to lock ticket channel ${channelId}: ${lockResult.error}`);
-  }
-
-  // Rename channel
+  // Lock channel + rename channel in parallel
   const shortId = channelId.slice(-4);
-  const renameResult = await discordBotFetch("PATCH", `channels/${channelId}`, {
-    name: `closed-${shortId}`,
-  });
-  if (!renameResult.ok) {
-    logger.warn(`Failed to rename ticket channel ${channelId}: ${renameResult.error}`);
-  }
+  const [lockResult, renameResult] = await Promise.all([
+    discordBotFetch("PUT", `channels/${channelId}/permissions/${guildId}`, { id: guildId, type: 0, deny: "2048" }),
+    discordBotFetch("PATCH", `channels/${channelId}`, { name: `closed-${shortId}` }),
+  ]);
+  if (!lockResult.ok) logger.error(`Failed to lock ticket channel ${channelId}: ${lockResult.error}`);
+  if (!renameResult.ok) logger.warn(`Failed to rename ticket channel ${channelId}: ${renameResult.error}`);
 
-  // Post close notice in ticket channel
+  // Post close notice + update staff embed in parallel
   const closeEmbed = {
     title: "Ticket Closed",
     description: [
@@ -217,25 +207,15 @@ export async function closeTicket(
     color: EmbedColors.ERROR,
     timestamp: new Date().toISOString(),
   };
-  const closeNoticeResult = await discordBotFetch("POST", `channels/${channelId}/messages`, {
-    embeds: [closeEmbed],
-  });
-  if (!closeNoticeResult.ok) {
-    logger.warn(`Failed to post close notice in ticket ${channelId}: ${closeNoticeResult.error}`);
-  }
-
-  // Update staff embed
-  const patchResult = await discordBotFetch(
-    "PATCH",
-    `channels/${ticket.staffChannelId}/messages/${ticket.staffMessageId}`,
-    {
+  const [closeNoticeResult, patchResult] = await Promise.all([
+    discordBotFetch("POST", `channels/${channelId}/messages`, { embeds: [closeEmbed] }),
+    discordBotFetch("PATCH", `channels/${ticket.staffChannelId}/messages/${ticket.staffMessageId}`, {
       embeds: [buildStaffEmbed(ticket)],
       components: buildStaffComponents(guildId, channelId, true),
-    },
-  );
-  if (!patchResult.ok) {
-    logger.error(`Failed to update staff embed for ticket ${channelId}: ${patchResult.error}`);
-  }
+    }),
+  ]);
+  if (!closeNoticeResult.ok) logger.warn(`Failed to post close notice in ticket ${channelId}: ${closeNoticeResult.error}`);
+  if (!patchResult.ok) logger.error(`Failed to update staff embed for ticket ${channelId}: ${patchResult.error}`);
 
   return ticket;
 }

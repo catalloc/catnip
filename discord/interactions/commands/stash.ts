@@ -191,12 +191,13 @@ export default defineCommand({
         return { success: true, message: "No stash entries found. Use `/stash save` to create one." };
       }
 
-      const entries: string[] = [];
-      for (const name of keys) {
-        const entry = await blob.getJSON<StashEntry>(blobKey(userId, name));
+      const stashEntries = await Promise.all(
+        keys.map((name) => blob.getJSON<StashEntry>(blobKey(userId, name)).then((e) => ({ name, entry: e }))),
+      );
+      const entries = stashEntries.map(({ name, entry }) => {
         const preview = entry ? entry.content.slice(0, 50) + (entry.content.length > 50 ? "..." : "") : "";
-        entries.push(`\`${name}\` — ${preview}`);
-      }
+        return `\`${name}\` — ${preview}`;
+      });
 
       return {
         success: true,

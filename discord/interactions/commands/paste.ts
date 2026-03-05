@@ -64,13 +64,14 @@ interface PasteListItem {
 async function listPastes(guildId: string): Promise<PasteListItem[]> {
   const prefix = blobPrefix(guildId);
   const entries = await blob.list(prefix);
-  const items: PasteListItem[] = [];
-  for (const e of entries) {
-    const code = e.key.slice(prefix.length);
-    const entry = await blob.getJSON<PasteEntry>(e.key);
-    if (entry) items.push({ code, entry });
-  }
-  return items;
+  const results = await Promise.all(
+    entries.map(async (e) => {
+      const code = e.key.slice(prefix.length);
+      const entry = await blob.getJSON<PasteEntry>(e.key);
+      return entry ? { code, entry } : null;
+    }),
+  );
+  return results.filter((r): r is PasteListItem => r !== null);
 }
 
 const listCache = new ExpiringCache<string, PasteListItem[]>(30_000, 500);

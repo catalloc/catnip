@@ -14,14 +14,15 @@ export default defineComponent({
   customId: "ticket-close:",
   match: "prefix",
   type: "button",
+  adminOnly: true,
 
-  async execute({ customId }) {
+  async execute({ customId, guildId: ctxGuildId }) {
     // Parse "ticket-close:{guildId}:{channelId}"
     const parts = customId.split(":");
     const guildId = parts[1];
     const channelId = parts[2];
 
-    if (!guildId || !channelId) {
+    if (!guildId || !channelId || guildId !== ctxGuildId) {
       return { success: false, error: "Invalid ticket reference." };
     }
 

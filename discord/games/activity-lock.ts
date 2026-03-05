@@ -33,25 +33,30 @@ export const activityLock = {
     now = Date.now(),
   ): Promise<{ success: boolean; error?: string }> {
     const key = lockKey(guildId, userId);
-    const existing = await kv.get<ActivityLock>(key);
+    let blocked = false;
+    let blockError = "";
 
-    if (existing && existing.expiresAt > now) {
-      const label = ACTIVITY_LABELS[existing.activityType];
-      const detailStr = existing.details ? ` **${existing.details}**` : "";
-      return {
-        success: false,
-        error: `You're currently ${label}${detailStr}! Finish that first.`,
-      };
+    try {
+      await kv.update<ActivityLock | null>(key, (existing) => {
+        if (existing && existing.expiresAt > now) {
+          const label = ACTIVITY_LABELS[existing.activityType];
+          const detailStr = existing.details ? ` **${existing.details}**` : "";
+          blocked = true;
+          blockError = `You're currently ${label}${detailStr}! Finish that first.`;
+          return existing;
+        }
+        return {
+          activityType,
+          details,
+          startedAt: now,
+          expiresAt: expiresAt ?? now + EXPIRY_DEFAULTS[activityType],
+        };
+      });
+    } catch {
+      return { success: false, error: "Failed to acquire lock. Try again." };
     }
 
-    const lock: ActivityLock = {
-      activityType,
-      details,
-      startedAt: now,
-      expiresAt: expiresAt ?? now + EXPIRY_DEFAULTS[activityType],
-    };
-
-    await kv.set(key, lock);
+    if (blocked) return { success: false, error: blockError };
     return { success: true };
   },
 

@@ -5,8 +5,8 @@ Deno.test("isValidPublicUrl: accepts valid https URL", () => {
   assertEquals(isValidPublicUrl("https://example.com/image.png"), true);
 });
 
-Deno.test("isValidPublicUrl: accepts valid http URL", () => {
-  assertEquals(isValidPublicUrl("http://example.com/image.png"), true);
+Deno.test("isValidPublicUrl: rejects http URL (HTTPS required)", () => {
+  assertEquals(isValidPublicUrl("http://example.com/image.png"), false);
 });
 
 Deno.test("isValidPublicUrl: rejects non-http scheme", () => {
@@ -39,7 +39,7 @@ Deno.test("isValidPublicUrl: rejects 172.16-31.x.x", () => {
 });
 
 Deno.test("isValidPublicUrl: allows 172.32.x.x (not private)", () => {
-  assertEquals(isValidPublicUrl("http://172.32.0.1/"), true);
+  assertEquals(isValidPublicUrl("https://172.32.0.1/"), true);
 });
 
 Deno.test("isValidPublicUrl: rejects 192.168.x.x", () => {

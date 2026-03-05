@@ -24,6 +24,8 @@ export default defineCommand({
       description: "Amount to give (negative to deduct)",
       type: OptionTypes.INTEGER,
       required: true,
+      min_value: -1_000_000_000,
+      max_value: 1_000_000_000,
     },
     {
       name: "reason",
@@ -46,6 +48,9 @@ export default defineCommand({
 
     if (amount === 0) {
       return { success: false, error: "Amount cannot be zero." };
+    }
+    if (Math.abs(amount) > 1_000_000_000) {
+      return { success: false, error: "Amount cannot exceed 1,000,000,000." };
     }
 
     if (amount > 0) {

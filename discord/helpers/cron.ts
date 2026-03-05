@@ -12,11 +12,12 @@ export interface CronOpts {
   name: string;
   prefix: string;
   maxDue?: number;
+  concurrency?: number;
   process: (entry: { key: string; value: unknown }, logger: DiscordLogger) => Promise<void>;
 }
 
 /**
- * Standard cron lifecycle: create logger, list due items, process in parallel, finalize.
+ * Standard cron lifecycle: create logger, list due items, process with concurrency limit, finalize.
  */
 export async function runCron(opts: CronOpts): Promise<void> {
   const logger = createLogger(opts.name);
@@ -24,9 +25,13 @@ export async function runCron(opts: CronOpts): Promise<void> {
   try {
     const entries = await kv.listDue(Date.now(), opts.prefix, opts.maxDue ?? 100);
 
-    await Promise.allSettled(
-      entries.map((entry) => opts.process(entry, logger)),
-    );
+    const concurrency = opts.concurrency ?? 5;
+    for (let i = 0; i < entries.length; i += concurrency) {
+      const batch = entries.slice(i, i + concurrency);
+      await Promise.allSettled(
+        batch.map((entry) => opts.process(entry, logger)),
+      );
+    }
 
     if (entries.length > 0) {
       const maxDue = opts.maxDue ?? 100;

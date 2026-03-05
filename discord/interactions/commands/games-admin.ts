@@ -116,6 +116,16 @@ export default defineCommand({
         return { success: false, error: "Provide at least one setting to change." };
       }
 
+      // Validate min-bet <= max-bet relationship
+      if (changes.casinoMinBet != null || changes.casinoMaxBet != null) {
+        const current = await gamesConfig.get(guildId);
+        const effectiveMin = changes.casinoMinBet ?? current.casinoMinBet;
+        const effectiveMax = changes.casinoMaxBet ?? current.casinoMaxBet;
+        if (effectiveMin > effectiveMax) {
+          return { success: false, error: `Minimum bet (${effectiveMin}) cannot exceed maximum bet (${effectiveMax}).` };
+        }
+      }
+
       await gamesConfig.update(guildId, changes);
       return { success: true, message: `Casino settings updated: ${Object.keys(changes).join(", ")}.` };
     }

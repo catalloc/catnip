@@ -23,14 +23,15 @@ export default defineComponent({
   customId: "ticket-join:",
   match: "prefix",
   type: "button",
+  adminOnly: true,
 
-  async execute({ customId, userId }) {
+  async execute({ customId, guildId: ctxGuildId, userId }) {
     // Parse "ticket-join:{guildId}:{channelId}"
     const parts = customId.split(":");
     const guildId = parts[1];
     const channelId = parts[2];
 
-    if (!guildId || !channelId) {
+    if (!guildId || !channelId || guildId !== ctxGuildId) {
       return { success: false, error: "Invalid ticket reference." };
     }
 

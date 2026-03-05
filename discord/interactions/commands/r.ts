@@ -88,7 +88,7 @@ export default defineCommand({
       if (announce) {
         discordBotFetch("POST", `channels/${options.channelId}/messages`, {
           content: `\u{1F3B2} <@${userId}> rolled some dice...`,
-        });
+        }).catch(() => {});
       }
 
       return {

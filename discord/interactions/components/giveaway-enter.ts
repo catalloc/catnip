@@ -29,17 +29,10 @@ export default defineComponent({
     let alreadyEntered = false;
     const now = Date.now();
 
-    // Pre-check: avoid entering update() when there's nothing valid to mutate
-    const existing = await kv.get<GiveawayConfig>(giveawayKey(guildId));
-    if (!existing || existing.ended) {
-      return { success: false, error: "This giveaway has ended." };
-    }
-
     const updated = await kv.update<GiveawayConfig>(giveawayKey(guildId), (config) => {
       if (!config || config.ended) {
-        // Re-check inside CAS — giveaway may have ended between pre-check and update
         error = "This giveaway has ended.";
-        return config ?? existing; // safe fallback — no-op write
+        return config!;
       }
       if (config.entrants.includes(userId)) {
         alreadyEntered = true;

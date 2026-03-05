@@ -57,12 +57,13 @@ function isValidBackupData(data: unknown): data is BackupData {
   // Validate tags
   if (inner.tags !== undefined) {
     if (typeof inner.tags !== "object" || inner.tags === null) return false;
-    for (const val of Object.values(inner.tags as Record<string, unknown>)) {
+    for (const [key, val] of Object.entries(inner.tags as Record<string, unknown>)) {
       if (!val || typeof val !== "object") return false;
       const tag = val as Record<string, unknown>;
       if (typeof tag.content !== "string" || typeof tag.createdBy !== "string" || typeof tag.createdAt !== "string") {
         return false;
       }
+      if (tag.content.length > MAX_TAG_CONTENT_LENGTH || key.length > MAX_TAG_NAME_LENGTH) return false;
     }
   }
 
@@ -77,10 +78,15 @@ function isValidBackupData(data: unknown): data is BackupData {
   }
 
   // Validate counter
-  if (inner.counter !== undefined && typeof inner.counter !== "number") return false;
+  if (inner.counter !== undefined) {
+    if (typeof inner.counter !== "number" || !Number.isFinite(inner.counter) || inner.counter < 0) return false;
+  }
 
   return true;
 }
+
+const MAX_TAG_CONTENT_LENGTH = 2000;
+const MAX_TAG_NAME_LENGTH = 64;
 
 const MAX_BACKUPS = 5;
 
@@ -275,10 +281,17 @@ export default defineCommand({
 
       const errors: string[] = [];
 
-      // Restore tags to KV
+      // Restore tags to KV — re-sanitize tag names
       if (backup.data.tags && Object.keys(backup.data.tags).length > 0) {
         try {
-          await kv.set(`tags:${guildId}`, backup.data.tags);
+          const sanitizedTags: Record<string, TagEntry> = {};
+          for (const [rawName, entry] of Object.entries(backup.data.tags)) {
+            const name = rawName.toLowerCase().replace(/[`\\*_~|<>]/g, "").slice(0, MAX_TAG_NAME_LENGTH);
+            if (name) sanitizedTags[name] = entry;
+          }
+          if (Object.keys(sanitizedTags).length > 0) {
+            await kv.set(`tags:${guildId}`, sanitizedTags);
+          }
         } catch {
           errors.push("tags");
         }

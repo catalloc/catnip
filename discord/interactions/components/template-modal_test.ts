@@ -339,7 +339,7 @@ Deno.test("template-modal edit: preserves createdBy and updates updatedAt", asyn
   assert(entry!.updatedAt > "2024-01-01T00:00:00.000Z");
 });
 
-Deno.test("template-modal: http:// URL accepted", async () => {
+Deno.test("template-modal: http:// URL rejected (HTTPS required)", async () => {
   resetStore();
   const mod = (await import("./template-modal.ts")).default;
   const result = await mod.execute({
@@ -355,9 +355,7 @@ Deno.test("template-modal: http:// URL accepted", async () => {
       template_image_url: "http://example.com/img.png",
     },
   });
-  assertEquals(result.success, true);
-  const entry = await blob.getJSON<TemplateEntry>("template:g1:test");
-  assertEquals(entry?.imageUrl, "http://example.com/img.png");
+  assertEquals(result.success, false);
 });
 
 Deno.test("template-modal: short hex color (3 chars) accepted", async () => {

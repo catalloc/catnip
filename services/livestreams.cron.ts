@@ -94,7 +94,7 @@ async function processTracker(
     };
     try {
       await kv.update<StreamLiveState | null>(liveKey, (current) => {
-        if (current) return current; // already live — no-op (return existing)
+        if (current) return current; // already live — no-op
         wonClaim = true;
         return liveState;
       });

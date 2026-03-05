@@ -98,7 +98,7 @@ export const accounts = {
   async listAccounts(guildId: string): Promise<EconomyAccount[]> {
     const entries = await kv.list(accountPrefix(guildId));
     return (entries.map((e) => e.value) as EconomyAccount[])
-      .filter((a) => a && a.userId)
+      .filter((a) => a && a.userId && typeof a.balance === "number" && Number.isFinite(a.balance))
       .sort((a, b) => b.balance - a.balance);
   },
 };

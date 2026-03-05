@@ -122,32 +122,38 @@ export default defineComponent({
     }
 
     if (action === "double") {
+      // Re-fetch session atomically to prevent concurrent double-down
+      const freshSession = await blackjack.getSession(guildId, userId);
+      if (!freshSession || freshSession.status === "done" || freshSession.deck.length !== session.deck.length) {
+        return { success: false, error: "This action has already been processed." };
+      }
+
       // Double the bet — debit additional coins
-      const { success: debited } = await accounts.debitBalance(guildId, userId, session.bet);
+      const { success: debited } = await accounts.debitBalance(guildId, userId, freshSession.bet);
       if (!debited) {
         return { success: false, error: "Insufficient funds to double down." };
       }
-      session.bet *= 2;
+      freshSession.bet *= 2;
 
       // Draw exactly one card, then stand
-      session.playerHand.push(session.deck.pop()!);
+      freshSession.playerHand.push(freshSession.deck.pop()!);
 
-      if (isBust(session.playerHand)) {
-        session.status = "done";
+      if (isBust(freshSession.playerHand)) {
+        freshSession.status = "done";
         await blackjack.deleteSession(guildId, userId);
         await activityLock.releaseLock(guildId, userId);
         const newAccount = await accounts.getOrCreate(guildId, userId);
         return {
           success: true,
           updateMessage: true,
-          embed: buildFinishedEmbed(session, "player-bust", 0, newAccount.balance, config),
+          embed: buildFinishedEmbed(freshSession, "player-bust", 0, newAccount.balance, config),
           components: [],
         };
       }
 
-      const finalSession = playDealerHand(session);
+      const finalSession = playDealerHand(freshSession);
       const outcome = determineOutcome(finalSession);
-      const payout = calculatePayout(session.bet, outcome);
+      const payout = calculatePayout(freshSession.bet, outcome);
       if (payout > 0) await accounts.creditBalance(guildId, userId, payout);
       await blackjack.deleteSession(guildId, userId);
       await activityLock.releaseLock(guildId, userId);
