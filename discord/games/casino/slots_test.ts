@@ -67,3 +67,72 @@ Deno.test("slots: no matching gives 0 payout", () => {
   }
   assert(gotNoMatch, "Should get at least one no-match in 500 spins");
 });
+
+// --- Deterministic tests using crypto.getRandomValues mock ---
+
+const origGetRandomValues = crypto.getRandomValues.bind(crypto);
+let mockValues: number[] = [];
+function mockRandom(...values: number[]) {
+  mockValues = [...values];
+  crypto.getRandomValues = function <T extends ArrayBufferView>(array: T): T {
+    if (array instanceof Uint32Array) {
+      array[0] = mockValues.shift() ?? 0;
+    }
+    return array;
+  } as typeof crypto.getRandomValues;
+}
+function restoreRandom() {
+  crypto.getRandomValues = origGetRandomValues;
+  mockValues = [];
+}
+
+Deno.test("slots deterministic: three sevens (jackpot)", () => {
+  try {
+    mockRandom(97, 97, 97);
+    const result = playSlots(100);
+    assertEquals(result.reels, [":seven:", ":seven:", ":seven:"]);
+    assertEquals(result.multiplier, 25);
+    assertEquals(result.payout, 2500);
+    assertEquals(result.won, true);
+  } finally {
+    restoreRandom();
+  }
+});
+
+Deno.test("slots deterministic: three cherries", () => {
+  try {
+    mockRandom(0, 0, 0);
+    const result = playSlots(100);
+    assertEquals(result.reels, [":cherries:", ":cherries:", ":cherries:"]);
+    assertEquals(result.multiplier, 1.5);
+    assertEquals(result.payout, 150);
+    assertEquals(result.won, true);
+  } finally {
+    restoreRandom();
+  }
+});
+
+Deno.test("slots deterministic: no match", () => {
+  try {
+    mockRandom(0, 30, 55);
+    const result = playSlots(100);
+    assertEquals(result.reels, [":cherries:", ":lemon:", ":tangerine:"]);
+    assertEquals(result.multiplier, 0);
+    assertEquals(result.payout, 0);
+    assertEquals(result.won, false);
+  } finally {
+    restoreRandom();
+  }
+});
+
+Deno.test("slots deterministic: two adjacent match", () => {
+  try {
+    mockRandom(0, 0, 30);
+    const result = playSlots(100);
+    assertEquals(result.reels, [":cherries:", ":cherries:", ":lemon:"]);
+    assertEquals(result.multiplier, 1.5);
+    assertEquals(result.won, true);
+  } finally {
+    restoreRandom();
+  }
+});

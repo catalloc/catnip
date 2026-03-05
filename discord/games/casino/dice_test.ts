@@ -35,3 +35,59 @@ Deno.test("dice: win when choice matches roll", () => {
   }
   assert(gotWin, "Should win at least once in 100 rolls");
 });
+
+// --- Deterministic tests using crypto.getRandomValues mock ---
+
+const origGetRandomValues = crypto.getRandomValues.bind(crypto);
+let mockValues: number[] = [];
+function mockRandom(...values: number[]) {
+  mockValues = [...values];
+  crypto.getRandomValues = function <T extends ArrayBufferView>(array: T): T {
+    if (array instanceof Uint32Array) {
+      array[0] = mockValues.shift() ?? 0;
+    }
+    return array;
+  } as typeof crypto.getRandomValues;
+}
+function restoreRandom() {
+  crypto.getRandomValues = origGetRandomValues;
+  mockValues = [];
+}
+
+Deno.test("dice deterministic: win", () => {
+  try {
+    mockRandom(2);
+    const result = playDice(100, 3);
+    assertEquals(result.rolled, 3);
+    assertEquals(result.choice, 3);
+    assertEquals(result.won, true);
+    assertEquals(result.payout, 500);
+  } finally {
+    restoreRandom();
+  }
+});
+
+Deno.test("dice deterministic: loss", () => {
+  try {
+    mockRandom(0);
+    const result = playDice(100, 3);
+    assertEquals(result.rolled, 1);
+    assertEquals(result.choice, 3);
+    assertEquals(result.won, false);
+    assertEquals(result.payout, 0);
+  } finally {
+    restoreRandom();
+  }
+});
+
+Deno.test("dice deterministic: all faces reachable", () => {
+  try {
+    for (let v = 0; v < 6; v++) {
+      mockRandom(v);
+      const result = playDice(100, 1);
+      assertEquals(result.rolled, v + 1);
+    }
+  } finally {
+    restoreRandom();
+  }
+});

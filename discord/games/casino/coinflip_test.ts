@@ -41,3 +41,60 @@ Deno.test("coinflip: result is always heads or tails", () => {
   assert(results.has("heads"), "Should get heads at least once in 100 flips");
   assert(results.has("tails"), "Should get tails at least once in 100 flips");
 });
+
+// --- Deterministic tests using crypto.getRandomValues mock ---
+
+const origGetRandomValues = crypto.getRandomValues.bind(crypto);
+let mockValues: number[] = [];
+function mockRandom(...values: number[]) {
+  mockValues = [...values];
+  crypto.getRandomValues = function <T extends ArrayBufferView>(array: T): T {
+    if (array instanceof Uint32Array) {
+      array[0] = mockValues.shift() ?? 0;
+    }
+    return array;
+  } as typeof crypto.getRandomValues;
+}
+function restoreRandom() {
+  crypto.getRandomValues = origGetRandomValues;
+  mockValues = [];
+}
+
+Deno.test("coinflip deterministic: heads win", () => {
+  try {
+    mockRandom(0);
+    const result = playCoinflip(100, "heads");
+    assertEquals(result.result, "heads");
+    assertEquals(result.choice, "heads");
+    assertEquals(result.won, true);
+    assertEquals(result.payout, 200);
+  } finally {
+    restoreRandom();
+  }
+});
+
+Deno.test("coinflip deterministic: tails win", () => {
+  try {
+    mockRandom(1);
+    const result = playCoinflip(100, "tails");
+    assertEquals(result.result, "tails");
+    assertEquals(result.choice, "tails");
+    assertEquals(result.won, true);
+    assertEquals(result.payout, 200);
+  } finally {
+    restoreRandom();
+  }
+});
+
+Deno.test("coinflip deterministic: loss", () => {
+  try {
+    mockRandom(1);
+    const result = playCoinflip(100, "heads");
+    assertEquals(result.result, "tails");
+    assertEquals(result.choice, "heads");
+    assertEquals(result.won, false);
+    assertEquals(result.payout, 0);
+  } finally {
+    restoreRandom();
+  }
+});

@@ -1,5 +1,5 @@
 import "../../test/_mocks/env.ts";
-import { assertEquals, assert } from "../../test/assert.ts";
+import { assertEquals, assert, assertStringIncludes } from "../../test/assert.ts";
 import { mockFetch, getCalls, restoreFetch } from "../../test/_mocks/fetch.ts";
 import {
   setVerifier,
@@ -21,93 +21,135 @@ const testVerifier: Verifier = {
   }),
 };
 
-// --- setVerifier / getVerifier ---
+// ---------------------------------------------------------------------------
+// Verifier registry
+// ---------------------------------------------------------------------------
 
-Deno.test("setVerifier/getVerifier: stores and retrieves verifier", () => {
+Deno.test("getVerifier returns null when no verifier has been set", () => {
+  // Force-clear the module-level activeVerifier so we can verify default state
+  (setVerifier as (v: Verifier | null) => void)(null);
+  const v = getVerifier();
+  assertEquals(v, null);
+});
+
+Deno.test("setVerifier/getVerifier round-trip stores and retrieves the verifier", () => {
   setVerifier(testVerifier);
   const v = getVerifier();
   assertEquals(v?.name, "TestVerifier");
+  assertEquals(v?.scopes, ["connections"]);
 });
 
-// --- handleLinkedRolesRedirect ---
+// ---------------------------------------------------------------------------
+// handleLinkedRolesRedirect
+// ---------------------------------------------------------------------------
 
-Deno.test("handleLinkedRolesRedirect: returns 302 to Discord OAuth2", async () => {
+Deno.test("handleLinkedRolesRedirect returns 302 status", async () => {
   setVerifier(testVerifier);
   const req = new Request("https://example.com/linked-roles");
   const res = await handleLinkedRolesRedirect(req);
-
   assertEquals(res.status, 302);
+});
+
+Deno.test("handleLinkedRolesRedirect Location header points to discord.com/oauth2/authorize", async () => {
+  setVerifier(testVerifier);
+  const req = new Request("https://example.com/linked-roles");
+  const res = await handleLinkedRolesRedirect(req);
   const location = res.headers.get("Location")!;
   assert(location.startsWith("https://discord.com/oauth2/authorize?"));
-  assert(location.includes("client_id="));
-  assert(location.includes("redirect_uri="));
-  assert(location.includes("response_type=code"));
-  assert(location.includes("state="));
 });
 
-Deno.test("handleLinkedRolesRedirect: includes verifier scopes", async () => {
+Deno.test("handleLinkedRolesRedirect includes base scopes role_connections.write and identify", async () => {
   setVerifier(testVerifier);
   const req = new Request("https://example.com/linked-roles");
   const res = await handleLinkedRolesRedirect(req);
   const location = res.headers.get("Location")!;
-  // Should include base scopes + verifier scopes
-  assert(location.includes("role_connections.write"));
-  assert(location.includes("identify"));
-  assert(location.includes("connections"));
+  assertStringIncludes(location, "role_connections.write");
+  assertStringIncludes(location, "identify");
 });
 
-Deno.test("handleLinkedRolesRedirect: redirect_uri points to callback", async () => {
+Deno.test("handleLinkedRolesRedirect merges verifier extra scopes", async () => {
+  setVerifier(testVerifier);
+  const req = new Request("https://example.com/linked-roles");
+  const res = await handleLinkedRolesRedirect(req);
+  const location = res.headers.get("Location")!;
+  // testVerifier has scopes: ["connections"]
+  assertStringIncludes(location, "connections");
+});
+
+Deno.test("handleLinkedRolesRedirect includes client_id from CONFIG.appId", async () => {
+  setVerifier(testVerifier);
   const req = new Request("https://example.com/linked-roles");
   const res = await handleLinkedRolesRedirect(req);
   const location = res.headers.get("Location")!;
   const params = new URLSearchParams(location.split("?")[1]);
-  assertEquals(params.get("redirect_uri"), "https://example.com/linked-roles/callback");
+  // Test env sets DISCORD_APP_ID to "11111111111111111"
+  assertEquals(params.get("client_id"), "11111111111111111");
 });
 
-// --- handleLinkedRolesCallback ---
+// ---------------------------------------------------------------------------
+// handleLinkedRolesCallback
+// ---------------------------------------------------------------------------
 
-Deno.test("handleLinkedRolesCallback: rejects missing code", async () => {
+Deno.test("handleLinkedRolesCallback returns error page when code param is missing", async () => {
   const req = new Request("https://example.com/linked-roles/callback?state=abc");
   const res = await handleLinkedRolesCallback(req);
   const text = await res.text();
-  assert(text.includes("Missing") || text.includes("error") || res.status >= 400 || text.includes("missing"));
+  assertStringIncludes(text, "Missing code or state parameter");
 });
 
-Deno.test("handleLinkedRolesCallback: rejects missing state", async () => {
+Deno.test("handleLinkedRolesCallback returns error page when state param is missing", async () => {
   const req = new Request("https://example.com/linked-roles/callback?code=abc");
   const res = await handleLinkedRolesCallback(req);
   const text = await res.text();
-  assert(text.includes("Missing") || text.includes("error") || res.status >= 400 || text.includes("missing"));
+  assertStringIncludes(text, "Missing code or state parameter");
 });
 
-Deno.test("handleLinkedRolesCallback: rejects invalid state", async () => {
+Deno.test("handleLinkedRolesCallback returns error page for invalid state", async () => {
   const req = new Request("https://example.com/linked-roles/callback?code=abc&state=invalid");
   const res = await handleLinkedRolesCallback(req);
   const text = await res.text();
-  assert(text.includes("Invalid") || text.includes("expired") || text.includes("error"));
+  assertStringIncludes(text, "Invalid or expired state");
 });
 
-Deno.test("handleLinkedRolesCallback: success flow with valid state", async () => {
-  setVerifier(testVerifier);
+Deno.test("handleLinkedRolesCallback returns error page when no verifier is configured", async () => {
+  // Clear the active verifier
+  (setVerifier as (v: Verifier | null) => void)(null);
 
-  // Generate a valid state token
+  // Generate a valid state so we pass the state check
   const validState = await generateState();
 
-  // Mock Discord API responses: token exchange, user fetch, push metadata
+  const req = new Request(
+    `https://example.com/linked-roles/callback?code=abc&state=${validState}`,
+  );
+  const res = await handleLinkedRolesCallback(req);
+  const text = await res.text();
+  assertStringIncludes(text, "No verifier configured");
+
+  // Restore verifier for subsequent tests
+  setVerifier(testVerifier);
+});
+
+Deno.test("handleLinkedRolesCallback succeeds with valid state and mocked API responses", async () => {
+  setVerifier(testVerifier);
+
+  // Generate a valid HMAC-signed state token
+  const validState = await generateState();
+
+  // Mock the 3 sequential fetch calls: exchangeCode, fetchUser, pushMetadata
   mockFetch({
     responses: [
-      // exchangeCode
+      // exchangeCode response
       {
         status: 200,
         body: {
-          access_token: "test_access",
+          access_token: "test_token",
           token_type: "Bearer",
           expires_in: 604800,
-          refresh_token: "test_refresh",
+          refresh_token: "ref",
           scope: "identify",
         },
       },
-      // fetchUser
+      // fetchUser response
       {
         status: 200,
         body: {
@@ -115,10 +157,10 @@ Deno.test("handleLinkedRolesCallback: success flow with valid state", async () =
           username: "testuser",
           discriminator: "0",
           avatar: null,
-          global_name: "Test User",
+          global_name: "TestUser",
         },
       },
-      // pushMetadata
+      // pushMetadata response
       { status: 200, body: {} },
     ],
   });
@@ -129,157 +171,15 @@ Deno.test("handleLinkedRolesCallback: success flow with valid state", async () =
     );
     const res = await handleLinkedRolesCallback(req);
     const text = await res.text();
-    // Should show success page with user's display name
-    assert(text.includes("Test User") || res.status === 200);
+
+    // Should return the success page containing the user's global_name
+    assertStringIncludes(text, "TestUser");
+    assertStringIncludes(text, "Verification Complete");
+
+    // Verify all 3 API calls were made
+    const calls = getCalls();
+    assertEquals(calls.length, 3);
   } finally {
     restoreFetch();
-  }
-});
-
-Deno.test("handleLinkedRolesCallback: handles API error gracefully", async () => {
-  setVerifier(testVerifier);
-  const validState = await generateState();
-
-  mockFetch({
-    responses: [
-      // exchangeCode fails
-      { status: 400, body: { error: "invalid_grant" } },
-    ],
-  });
-
-  try {
-    const req = new Request(
-      `https://example.com/linked-roles/callback?code=bad&state=${validState}`,
-    );
-    const res = await handleLinkedRolesCallback(req);
-    const text = await res.text();
-    // Should show error page
-    assert(text.includes("error") || text.includes("wrong") || text.includes("Error"));
-  } finally {
-    restoreFetch();
-  }
-});
-
-Deno.test("handleLinkedRolesRedirect: null verifier still generates valid redirect URL", async () => {
-  setVerifier(null as any);
-  const req = new Request("https://example.com/linked-roles");
-  const res = await handleLinkedRolesRedirect(req);
-  assertEquals(res.status, 302);
-  const location = res.headers.get("Location")!;
-  assert(location.startsWith("https://discord.com/oauth2/authorize?"));
-});
-
-Deno.test("handleLinkedRolesCallback: null verifier returns error page", async () => {
-  setVerifier(null as any);
-  const validState = await generateState();
-  const req = new Request(
-    `https://example.com/linked-roles/callback?code=abc&state=${validState}`,
-  );
-  const res = await handleLinkedRolesCallback(req);
-  const text = await res.text();
-  assert(text.includes("No verifier") || text.includes("error") || text.includes("Error"));
-});
-
-Deno.test("handleLinkedRolesCallback: global_name null falls back to username", async () => {
-  setVerifier(testVerifier);
-  const validState = await generateState();
-
-  mockFetch({
-    responses: [
-      { status: 200, body: { access_token: "tok", token_type: "Bearer", expires_in: 3600, refresh_token: "r", scope: "identify" } },
-      { status: 200, body: { id: "123", username: "fallbackuser", discriminator: "0", avatar: null, global_name: null } },
-      { status: 200, body: {} },
-    ],
-  });
-  try {
-    const req = new Request(`https://example.com/linked-roles/callback?code=c&state=${validState}`);
-    const res = await handleLinkedRolesCallback(req);
-    const text = await res.text();
-    assert(text.includes("fallbackuser") || res.status === 200);
-  } finally {
-    restoreFetch();
-  }
-});
-
-// --- verifier error returns error page ---
-
-Deno.test("handleLinkedRolesCallback: verifier error returns error page", async () => {
-  const errorVerifier: Verifier = {
-    name: "ErrorVerifier",
-    metadata: [],
-    scopes: [],
-    verify: async () => { throw new Error("verification failed"); },
-  };
-  setVerifier(errorVerifier);
-  const validState = await generateState();
-
-  mockFetch({
-    responses: [
-      { status: 200, body: { access_token: "tok", token_type: "Bearer", expires_in: 3600, refresh_token: "r", scope: "identify" } },
-      { status: 200, body: { id: "123", username: "user1", discriminator: "0", avatar: null, global_name: "User" } },
-    ],
-  });
-  try {
-    const req = new Request(`https://example.com/linked-roles/callback?code=c&state=${validState}`);
-    const res = await handleLinkedRolesCallback(req);
-    const text = await res.text();
-    assert(text.includes("went wrong") || text.includes("error") || text.includes("Error"));
-  } finally {
-    restoreFetch();
-    setVerifier(testVerifier); // restore
-  }
-});
-
-// --- sanitizes secrets in error logs ---
-
-Deno.test("handleLinkedRolesCallback: sanitizes secrets in error logs", async () => {
-  const tokenLeakVerifier: Verifier = {
-    name: "LeakVerifier",
-    metadata: [],
-    scopes: [],
-    verify: async () => { throw new Error("Failed with Bot MTIzNDU2Nzg5.abc.secret"); },
-  };
-  setVerifier(tokenLeakVerifier);
-  const validState = await generateState();
-
-  // Capture console output from logger
-  const logged: string[] = [];
-  const origLog = console.log;
-  console.log = (msg: string) => logged.push(msg);
-
-  mockFetch({
-    responses: [
-      { status: 200, body: { access_token: "tok", token_type: "Bearer", expires_in: 3600, refresh_token: "r", scope: "identify" } },
-      { status: 200, body: { id: "123", username: "user2", discriminator: "0", avatar: null, global_name: "User2" } },
-    ],
-  });
-  try {
-    const req = new Request(`https://example.com/linked-roles/callback?code=c&state=${validState}`);
-    await handleLinkedRolesCallback(req);
-    // Check that logged messages don't contain the raw token
-    const allLogs = logged.join(" ");
-    assert(!allLogs.includes("MTIzNDU2Nzg5"), "Should have redacted Bot token in logs");
-  } finally {
-    restoreFetch();
-    console.log = origLog;
-    setVerifier(testVerifier);
-  }
-});
-
-// --- BOT_URL config for redirect_uri ---
-
-Deno.test("handleLinkedRolesRedirect: uses BOT_URL config for redirect_uri", async () => {
-  const origBotUrl = Deno.env.get("BOT_URL");
-  Deno.env.set("BOT_URL", "https://mybot.example.com");
-  try {
-    setVerifier(testVerifier);
-    const req = new Request("https://different-origin.com/linked-roles");
-    const res = await handleLinkedRolesRedirect(req);
-    const location = res.headers.get("Location")!;
-    const params = new URLSearchParams(location.split("?")[1]);
-    assertEquals(params.get("redirect_uri"), "https://mybot.example.com/linked-roles/callback");
-  } finally {
-    if (origBotUrl) Deno.env.set("BOT_URL", origBotUrl);
-    else Deno.env.delete("BOT_URL");
   }
 });

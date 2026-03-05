@@ -34,3 +34,18 @@ Deno.test("facts-page: metadata", () => {
   assertEquals(handler.match, "prefix");
   assertEquals(handler.type, "button");
 });
+
+Deno.test("facts-page: negative page wraps around", async () => {
+  const result = await handler.execute({ customId: "facts-page:-1" } as any);
+  assertEquals(result.success, true);
+  assertEquals(result.embed!.title, `Fact ${FACTS.length} of ${FACTS.length}`);
+  assertEquals(result.embed!.description, FACTS[FACTS.length - 1]);
+});
+
+Deno.test("facts-page: beyond-length page wraps", async () => {
+  const result = await handler.execute({ customId: "facts-page:9999" } as any);
+  assertEquals(result.success, true);
+  const expectedIdx = ((9999 % FACTS.length) + FACTS.length) % FACTS.length;
+  assertEquals(result.embed!.title, `Fact ${expectedIdx + 1} of ${FACTS.length}`);
+  assertEquals(result.embed!.description, FACTS[expectedIdx]);
+});

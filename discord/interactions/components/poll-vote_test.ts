@@ -129,3 +129,39 @@ Deno.test("poll-vote: component metadata is correct", () => {
   assertEquals(pollVote.match, "prefix");
   assertEquals(pollVote.type, "button");
 });
+
+Deno.test("poll-vote: negative option index rejects", async () => {
+  resetStore();
+  await kv.set(pollKey("g1"), makePoll());
+  const result = await pollVote.execute({
+    customId: "poll-vote:g1:-1",
+    guildId: "g1",
+    userId: "u1",
+    interaction: {},
+  });
+  assertEquals(result.success, false);
+});
+
+Deno.test("poll-vote: option index at boundary (equals length)", async () => {
+  resetStore();
+  await kv.set(pollKey("g1"), makePoll()); // 3 options
+  mockFetch({ default: { status: 200, body: {} } });
+  try {
+    const result = await pollVote.execute(makeCtx("g1", "u1", 3));
+    assertEquals(result.success, false);
+    assert(result.error!.includes("Invalid"));
+  } finally {
+    restoreFetch();
+  }
+});
+
+Deno.test("poll-vote: non-numeric option index", async () => {
+  resetStore();
+  const result = await pollVote.execute({
+    customId: "poll-vote:g1:abc",
+    guildId: "g1",
+    userId: "u1",
+    interaction: {},
+  });
+  assertEquals(result.success, false);
+});

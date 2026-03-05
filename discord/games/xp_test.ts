@@ -161,3 +161,19 @@ Deno.test("makeXpBar: at 100% (level boundary)", () => {
   assert(bar.includes("░░░░░░░░░░"));
   assert(bar.includes("0/"));
 });
+
+Deno.test("totalXpForLevel(100): finite positive number", () => {
+  const total = totalXpForLevel(100);
+  assert(Number.isFinite(total));
+  assert(total > 0);
+});
+
+Deno.test("xpForLevel(-1): returns 0", () => {
+  assertEquals(xpForLevel(-1), 0);
+});
+
+Deno.test("makeXpBar: custom barLength", () => {
+  const bar = makeXpBar(0, 5);
+  assert(bar.startsWith("░░░░░"));
+  assert(!bar.startsWith("░░░░░░")); // not 6
+});

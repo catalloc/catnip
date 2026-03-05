@@ -132,3 +132,29 @@ Deno.test("accounts: credit then debit keeps lifetimeEarned", async () => {
   assertEquals(account?.balance, 150);
   assertEquals(account?.lifetimeEarned, 200);
 });
+
+Deno.test("accounts creditBalance: 0 amount leaves balance unchanged", async () => {
+  resetStore();
+  await accounts.creditBalance("g1", "u1", 100);
+  const updated = await accounts.creditBalance("g1", "u1", 0);
+  assertEquals(updated.balance, 100);
+  assertEquals(updated.lifetimeEarned, 100);
+});
+
+Deno.test("accounts debitBalance: 0 amount succeeds", async () => {
+  resetStore();
+  await accounts.creditBalance("g1", "u1", 100);
+  const { success, account } = await accounts.debitBalance("g1", "u1", 0);
+  assertEquals(success, true);
+  assertEquals(account.balance, 100);
+});
+
+Deno.test("accounts: multiple credits accumulate lifetimeEarned", async () => {
+  resetStore();
+  await accounts.creditBalance("g1", "u1", 50);
+  await accounts.creditBalance("g1", "u1", 75);
+  await accounts.creditBalance("g1", "u1", 25);
+  const account = await accounts.getAccount("g1", "u1");
+  assertEquals(account!.balance, 150);
+  assertEquals(account!.lifetimeEarned, 150);
+});

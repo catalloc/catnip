@@ -87,3 +87,72 @@ Deno.test("roulette: number bet payout is 36x", () => {
     }
   }
 });
+
+// --- Deterministic tests using crypto.getRandomValues mock ---
+
+const origGetRandomValues = crypto.getRandomValues.bind(crypto);
+let mockValues: number[] = [];
+function mockRandom(...values: number[]) {
+  mockValues = [...values];
+  crypto.getRandomValues = function <T extends ArrayBufferView>(array: T): T {
+    if (array instanceof Uint32Array) {
+      array[0] = mockValues.shift() ?? 0;
+    }
+    return array;
+  } as typeof crypto.getRandomValues;
+}
+function restoreRandom() {
+  crypto.getRandomValues = origGetRandomValues;
+  mockValues = [];
+}
+
+Deno.test("roulette deterministic: red bet wins on red", () => {
+  try {
+    mockRandom(1);
+    const result = playRoulette(100, "red", 0);
+    assertEquals(result.landed, 1);
+    assertEquals(result.landedColor, "red");
+    assertEquals(result.won, true);
+    assertEquals(result.payout, 200);
+  } finally {
+    restoreRandom();
+  }
+});
+
+Deno.test("roulette deterministic: red bet loses on black", () => {
+  try {
+    mockRandom(2);
+    const result = playRoulette(100, "red", 0);
+    assertEquals(result.landed, 2);
+    assertEquals(result.landedColor, "black");
+    assertEquals(result.won, false);
+    assertEquals(result.payout, 0);
+  } finally {
+    restoreRandom();
+  }
+});
+
+Deno.test("roulette deterministic: number bet wins", () => {
+  try {
+    mockRandom(17);
+    const result = playRoulette(100, "number", 17);
+    assertEquals(result.landed, 17);
+    assertEquals(result.won, true);
+    assertEquals(result.payout, 3600);
+  } finally {
+    restoreRandom();
+  }
+});
+
+Deno.test("roulette deterministic: green (0)", () => {
+  try {
+    mockRandom(0);
+    const result = playRoulette(100, "red", 0);
+    assertEquals(result.landed, 0);
+    assertEquals(result.landedColor, "green");
+    assertEquals(result.won, false);
+    assertEquals(result.payout, 0);
+  } finally {
+    restoreRandom();
+  }
+});
