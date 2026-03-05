@@ -2,14 +2,12 @@
  * discord/services/stream-platforms.ts
  *
  * Platform adapters for checking live stream status on Twitch, YouTube, and Kick.
- * Twitch uses batched Helix API calls with token caching via KV.
+ * Twitch uses batched Helix API calls with in-memory token caching.
  * YouTube uses the Data API v3 search endpoint.
  * Kick uses the unofficial public API (best-effort).
  */
 
 import { CONFIG } from "../constants.ts";
-import { kv } from "../persistence/kv.ts";
-import { sanitize } from "../webhook/logger.ts";
 
 export type Platform = "twitch" | "youtube" | "kick";
 
@@ -28,6 +26,8 @@ interface TwitchTokenCache {
   expiresAt: number; // epoch ms
 }
 
+let memoryTokenCache: TwitchTokenCache | null = null;
+
 async function getTwitchToken(): Promise<string> {
   const clientId = CONFIG.twitchClientId;
   const clientSecret = CONFIG.twitchClientSecret;
@@ -35,43 +35,32 @@ async function getTwitchToken(): Promise<string> {
     throw new Error("TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET are required for Twitch streams");
   }
 
-  const cached = await kv.get<TwitchTokenCache>("twitch_token");
-  if (cached && cached.expiresAt > Date.now() + 60_000) {
-    return cached.accessToken;
+  if (memoryTokenCache && memoryTokenCache.expiresAt > Date.now() + 60_000) {
+    return memoryTokenCache.accessToken;
   }
 
-  try {
-    const resp = await fetch("https://id.twitch.tv/oauth2/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: "client_credentials",
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
+  const resp = await fetch("https://id.twitch.tv/oauth2/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "client_credentials",
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
 
-    if (!resp.ok) {
-      const text = await resp.text();
-      throw new Error(`Twitch token request failed (${resp.status}): ${text}`);
-    }
-
-    const data = await resp.json();
-    const token: TwitchTokenCache = {
-      accessToken: data.access_token,
-      expiresAt: Date.now() + data.expires_in * 1000,
-    };
-    await kv.set("twitch_token", token);
-    return token.accessToken;
-  } catch (error) {
-    // If refresh fails but we have a cached token (possibly still valid), use it as fallback
-    if (cached) {
-      console.warn(sanitize(`[Twitch] Token refresh failed, using stale cached token: ${error instanceof Error ? error.message : String(error)}`));
-      return cached.accessToken;
-    }
-    throw error;
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Twitch token request failed (${resp.status}): ${text}`);
   }
+
+  const data = await resp.json();
+  memoryTokenCache = {
+    accessToken: data.access_token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  };
+  return memoryTokenCache.accessToken;
 }
 
 /**

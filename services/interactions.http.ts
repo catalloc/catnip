@@ -22,7 +22,7 @@
  */
 
 import { handleInteraction } from "../discord/interactions/handler.ts";
-import { getAllCommands, getFailedImports } from "../discord/interactions/registry.ts";
+import { getFailedImports } from "../discord/interactions/registry.ts";
 import { syncAllGuilds } from "../discord/interactions/registration.ts";
 import { discover } from "../discord/interactions/auto-discover.ts";
 import { CONFIG } from "../discord/constants.ts";
@@ -33,6 +33,8 @@ import { handlePatreonWebhook } from "../discord/linked-roles/patreon-webhook.ts
 import { timingSafeEqual } from "../discord/helpers/crypto.ts";
 import { createLogger, finalizeAllLoggers } from "../discord/webhook/logger.ts";
 import "../discord/linked-roles/verifiers/always-verified.ts"; // side-effect: registers verifier
+
+const logger = createLogger("HTTP");
 
 async function checkPassword(req: Request): Promise<Response | null> {
   const password = CONFIG.adminPassword;
@@ -72,10 +74,8 @@ export default async function(req: Request): Promise<Response> {
           const fail = results.filter((r) => !r.success);
           return Response.json({ registered: ok.length, failed: fail.length, results });
         } catch (err) {
-          return Response.json(
-            { error: "Registration failed", detail: err instanceof Error ? err.message : String(err) },
-            { status: 500 },
-          );
+          logger.error("Registration failed:", err);
+          return Response.json({ error: "Registration failed" }, { status: 500 });
         }
       }
 
@@ -86,10 +86,8 @@ export default async function(req: Request): Promise<Response> {
           const result = await registerMetadataSchema();
           return Response.json(result, { status: result.ok ? 200 : 500 });
         } catch (err) {
-          return Response.json(
-            { error: "Metadata registration failed", detail: err instanceof Error ? err.message : String(err) },
-            { status: 500 },
-          );
+          logger.error("Metadata registration failed:", err);
+          return Response.json({ error: "Metadata registration failed" }, { status: 500 });
         }
       }
 
@@ -104,18 +102,14 @@ export default async function(req: Request): Promise<Response> {
             manifest,
           });
         } catch (err) {
-          return Response.json(
-            { error: "Discovery failed", detail: err instanceof Error ? err.message : String(err) },
-            { status: 500 },
-          );
+          logger.error("Discovery failed:", err);
+          return Response.json({ error: "Discovery failed" }, { status: 500 });
         }
       }
 
       const failedImports = getFailedImports();
       return Response.json({
         status: failedImports.length > 0 ? "degraded" : "ok",
-        commands: getAllCommands().length,
-        ...(failedImports.length > 0 ? { failedImports: failedImports.length } : {}),
       });
     }
 
@@ -128,7 +122,6 @@ export default async function(req: Request): Promise<Response> {
 
     return handleInteraction(req);
   } catch (err) {
-    const logger = createLogger("HTTP");
     logger.error("Unhandled request error:", err);
     return Response.json({ error: "Internal server error" }, { status: 500 });
   } finally {

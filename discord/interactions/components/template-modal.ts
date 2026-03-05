@@ -67,7 +67,7 @@ export default defineComponent({
 
     // Validate image URL
     if (imageUrl && !isValidPublicUrl(imageUrl)) {
-      return { success: false, error: `Invalid image URL. Must start with \`http://\` or \`https://\`.` };
+      return { success: false, error: `Invalid image URL. Must be a valid public HTTPS URL.` };
     }
 
     const now = new Date().toISOString();

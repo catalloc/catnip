@@ -25,6 +25,8 @@ async function verifySignature(
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(CONFIG.patreonWebhookSecret),
+    // NOTE: MD5-HMAC is required by the current Patreon webhook API specification.
+    // Patreon signs X-Patreon-Signature with HMAC-MD5 — this is NOT a choice.
     { name: "HMAC", hash: "MD5" },
     false,
     ["sign"],
@@ -87,9 +89,9 @@ interface RateLimitState {
   windowStart: number;
 }
 
-async function isRateLimited(): Promise<boolean> {
+async function isRateLimited(sourceId: string): Promise<boolean> {
   let limited = false;
-  await kv.update<RateLimitState>("ratelimit:patreon", (current) => {
+  await kv.update<RateLimitState>(`ratelimit:patreon:${sourceId}`, (current) => {
     const now = Date.now();
     if (!current || now - current.windowStart >= RATE_LIMIT_WINDOW_MS) {
       return { count: 1, windowStart: now };
@@ -103,6 +105,18 @@ async function isRateLimited(): Promise<boolean> {
   return limited;
 }
 
+function extractCampaignId(payload: Record<string, unknown>): string {
+  try {
+    const data = payload?.data as Record<string, unknown> | undefined;
+    const rels = data?.relationships as Record<string, unknown> | undefined;
+    const campaign = rels?.campaign as Record<string, unknown> | undefined;
+    const campaignData = campaign?.data as Record<string, unknown> | undefined;
+    const id = campaignData?.id;
+    if (typeof id === "string" && /^\d+$/.test(id)) return id;
+  } catch { /* fall through */ }
+  return "global";
+}
+
 export const _internals = { isRateLimited };
 
 /**
@@ -110,19 +124,6 @@ export const _internals = { isRateLimited };
  * POST /patreon/webhook
  */
 export async function handlePatreonWebhook(req: Request): Promise<Response> {
-  let rateLimited = false;
-  try {
-    rateLimited = await isRateLimited();
-  } catch (err) {
-    logger.error("Rate limit check failed, allowing request:", err);
-  }
-  if (rateLimited) {
-    return new Response(JSON.stringify({ error: "Too many requests" }), {
-      status: 429,
-      headers: { "Content-Type": "application/json", "Retry-After": "60" },
-    });
-  }
-
   if (!CONFIG.patreonWebhookSecret) {
     return Response.json(
       { error: "PATREON_WEBHOOK_SECRET not configured" },
@@ -137,18 +138,32 @@ export async function handlePatreonWebhook(req: Request): Promise<Response> {
 
   const body = await req.text();
 
-  if (!(await verifySignature(body, signature))) {
-    return Response.json({ error: "Invalid signature" }, { status: 401 });
-  }
-
-  const event = req.headers.get("X-Patreon-Event");
-
   let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(body) as Record<string, unknown>;
   } catch {
     return Response.json({ error: "Malformed JSON body" }, { status: 400 });
   }
+
+  const campaignId = extractCampaignId(payload);
+  let rateLimited = false;
+  try {
+    rateLimited = await isRateLimited(campaignId);
+  } catch (err) {
+    logger.error("Rate limit check failed, allowing request:", err);
+  }
+  if (rateLimited) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": "60" },
+    });
+  }
+
+  if (!(await verifySignature(body, signature))) {
+    return Response.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  const event = req.headers.get("X-Patreon-Event");
 
   const discordId = extractDiscordId(payload);
 

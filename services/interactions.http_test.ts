@@ -64,7 +64,7 @@ Deno.test("http: GET root returns health check JSON", async () => {
   assertEquals(res.status, 200);
   const body = await res.json();
   assertEquals(body.status, "ok");
-  assertEquals(typeof body.commands, "number");
+  assertEquals(body.commands, undefined);
 });
 
 // --- Trailing slash normalization ---

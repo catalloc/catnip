@@ -112,7 +112,7 @@ Deno.test("registerGlobalCommands: uses bulk overwrite (PUT)", async () => {
 // --- registerCommand ---
 
 Deno.test("registerCommand: returns error for unknown command", async () => {
-  const results = await registerCommand("nonexistent_command_xyz", "guild123");
+  const results = await registerCommand("nonexistent_command_xyz", "100000000000000123");
   assertEquals(results.length, 1);
   assertEquals(results[0].success, false);
   assertEquals(results[0].error?.includes("not found"), true);
@@ -123,14 +123,14 @@ Deno.test("registerCommand: returns error for unknown command", async () => {
 Deno.test("registerCommandsToGuild: always uses bulk overwrite (PUT)", async () => {
   mockFetch({ default: { status: 200, body: [] } });
   try {
-    const results = await registerCommandsToGuild("guild123");
+    const results = await registerCommandsToGuild("100000000000000123");
     // Should use PUT for bulk overwrite
     const calls = getCalls();
     if (calls.length > 0) {
       assertEquals(calls[0].init?.method, "PUT");
     }
     for (const r of results) {
-      assertEquals(r.guildId, "guild123");
+      assertEquals(r.guildId, "100000000000000123");
     }
   } finally {
     restoreFetch();
@@ -142,9 +142,9 @@ Deno.test("registerCommandsToGuild: always uses bulk overwrite (PUT)", async () 
 Deno.test("deregisterCommandFromGuild: success when command not registered", async () => {
   mockFetch({ default: { status: 200, body: [] } }); // no commands
   try {
-    const result = await deregisterCommandFromGuild("ping", "guild789");
+    const result = await deregisterCommandFromGuild("ping", "100000000000000789");
     assertEquals(result.success, true);
-    assertEquals(result.guildId, "guild789");
+    assertEquals(result.guildId, "100000000000000789");
   } finally {
     restoreFetch();
   }
@@ -152,10 +152,10 @@ Deno.test("deregisterCommandFromGuild: success when command not registered", asy
 
 Deno.test("deregisterCommandFromGuild: deletes existing command", async () => {
   mockFetch({
-    default: { status: 200, body: [{ id: "cmd42", name: "ping", description: "test" }] },
+    default: { status: 200, body: [{ id: "42424242424242", name: "ping", description: "test" }] },
   });
   try {
-    const result = await deregisterCommandFromGuild("ping", "guild789");
+    const result = await deregisterCommandFromGuild("ping", "100000000000000789");
     assertEquals(result.success, true);
     const calls = getCalls();
     // First call is GET to fetch commands, subsequent calls include DELETE
@@ -170,13 +170,13 @@ Deno.test("deregisterCommandFromGuild: deletes existing command", async () => {
 Deno.test("deregisterCommandFromGuild: handles API error gracefully", async () => {
   mockFetch({
     responses: [
-      { status: 200, body: [{ id: "cmd42", name: "ping", description: "test" }] },
+      { status: 200, body: [{ id: "42424242424242", name: "ping", description: "test" }] },
       { status: 500, body: { message: "error" } },
     ],
   });
   try {
-    const result = await deregisterCommandFromGuild("ping", "guildErr");
-    assertEquals(result.guildId, "guildErr");
+    const result = await deregisterCommandFromGuild("ping", "100000000000000999");
+    assertEquals(result.guildId, "100000000000000999");
     // Should not throw, returns result object
     assertEquals(typeof result.success, "boolean");
   } finally {
@@ -189,7 +189,7 @@ Deno.test("deregisterCommandFromGuild: handles API error gracefully", async () =
 Deno.test("deregisterAllFromGuild: uses bulk overwrite with empty array", async () => {
   mockFetch({ default: { status: 200, body: [] } });
   try {
-    const result = await deregisterAllFromGuild("guild999");
+    const result = await deregisterAllFromGuild("100000000000000111");
     assertEquals(result.success, true);
     const calls = getCalls();
     assertEquals(calls.length, 1);

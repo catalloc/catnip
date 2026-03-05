@@ -41,6 +41,14 @@ export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   return mismatch === 0;
 }
 
+/** Cryptographically random jitter in [0, maxMs). */
+export function cryptoJitter(maxMs: number): number {
+  if (maxMs <= 0) return 0;
+  const array = new Uint32Array(1);
+  crypto.getRandomValues(array);
+  return (array[0] / 0x100000000) * maxMs;
+}
+
 /**
  * Generate a cryptographically secure random index in [0, max).
  * Uses rejection sampling to avoid modulo bias.

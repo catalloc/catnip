@@ -80,10 +80,8 @@ export class DiscordLogger {
 
   error(message: string, error?: unknown): void {
     const errorDetails = error instanceof Error
-      ? `\n\`\`\`\n${error.message}\n${error.stack?.slice(0, 1500) ?? "No stack"}\n\`\`\``
-      : error
-        ? `\n\`\`\`\n${String(error)}\n\`\`\``
-        : "";
+      ? ` ${error.name}: ${error.message}`
+      : error ? ` ${String(error)}` : "";
     this.log("error", message + errorDetails);
   }
 

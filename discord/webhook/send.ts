@@ -1,5 +1,6 @@
 import { CONFIG } from "../constants.ts";
 import { remainingMs } from "../discord-api.ts";
+import { cryptoJitter } from "../helpers/crypto.ts";
 
 export interface EmbedField {
   name: string;
@@ -214,7 +215,7 @@ async function sendToDiscordApi(
       }
 
       if (response.status >= 500 && attempt === 0 && remainingMs() > 32_000) {
-        await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
+        await new Promise((r) => setTimeout(r, 1000 + cryptoJitter(1000)));
         continue;
       }
 
@@ -287,7 +288,7 @@ async function sendChunked(
     let sendResult = await sendWithFallback(webhookUrl, payloads[i]);
 
     if (!sendResult.success && sendResult.status === 429 && sendResult.retryAfterMs) {
-      const jitter = Math.random() * Math.min(sendResult.retryAfterMs * 0.2, 2000);
+      const jitter = cryptoJitter(Math.min(sendResult.retryAfterMs * 0.2, 2000));
       const waitMs = Math.min(sendResult.retryAfterMs + jitter, 60_000);
       if (waitMs + 30_000 <= remainingMs()) {
         await new Promise((r) => setTimeout(r, waitMs));

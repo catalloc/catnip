@@ -51,7 +51,7 @@ Deno.test("logger: finalize clears scheduled timer", async () => {
 
 // --- Error formatting ---
 
-Deno.test("logger: error with Error object includes stack", () => {
+Deno.test("logger: error with Error object includes name and message only", () => {
   // Capture what gets logged
   const messages: string[] = [];
   const original = console.log;

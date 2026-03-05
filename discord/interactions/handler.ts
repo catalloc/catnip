@@ -18,6 +18,7 @@ import { UserFacingError } from "./errors.ts";
 import type { ComponentContext } from "./define-component.ts";
 import { kv } from "../persistence/kv.ts";
 import { remainingMs } from "../discord-api.ts";
+import { cryptoJitter } from "../helpers/crypto.ts";
 
 const INTERACTION_TYPES = {
   PING: 1,
@@ -361,7 +362,7 @@ async function sendFollowup(
       const errorBody = await response.text().catch(() => "");
       if (response.status === 429 && attempt === 0) {
         const retryAfter = parseFloat(response.headers.get("Retry-After") || "1") * 1000;
-        const jitter = Math.random() * Math.min(retryAfter * 0.2, 2000);
+        const jitter = cryptoJitter(Math.min(retryAfter * 0.2, 2000));
         const totalWait = Math.min(retryAfter + jitter, 60_000);
         if (totalWait + 30_000 > remainingMs()) {
           logger.error(`Failed to send followup: 429 rate limited, insufficient time budget (${Math.round(remainingMs() / 1000)}s left)`);
@@ -371,7 +372,7 @@ async function sendFollowup(
         continue;
       }
       if (response.status >= 500 && attempt === 0 && remainingMs() > 32_000) {
-        await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
+        await new Promise((r) => setTimeout(r, 1000 + cryptoJitter(1000)));
         continue;
       }
       logger.error(

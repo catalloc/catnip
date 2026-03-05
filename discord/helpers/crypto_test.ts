@@ -1,5 +1,5 @@
 import { assertEquals, assert } from "../../test/assert.ts";
-import { timingSafeEqual, secureRandomIndex } from "./crypto.ts";
+import { timingSafeEqual, secureRandomIndex, cryptoJitter } from "./crypto.ts";
 
 // --- timingSafeEqual ---
 
@@ -21,6 +21,28 @@ Deno.test("timingSafeEqual: different lengths return false", async () => {
 
 Deno.test("timingSafeEqual: single char difference returns false", async () => {
   assertEquals(await timingSafeEqual("abcdef", "abcdeg"), false);
+});
+
+// --- cryptoJitter ---
+
+Deno.test("cryptoJitter: returns 0 for maxMs <= 0", () => {
+  assertEquals(cryptoJitter(0), 0);
+  assertEquals(cryptoJitter(-100), 0);
+});
+
+Deno.test("cryptoJitter: result is within [0, maxMs)", () => {
+  for (let i = 0; i < 100; i++) {
+    const val = cryptoJitter(2000);
+    assert(val >= 0 && val < 2000, `Expected 0 <= ${val} < 2000`);
+  }
+});
+
+Deno.test("cryptoJitter: produces varied output", () => {
+  const results = new Set<number>();
+  for (let i = 0; i < 50; i++) {
+    results.add(Math.floor(cryptoJitter(1000)));
+  }
+  assert(results.size > 5, `Expected variety, got only ${results.size} distinct values`);
 });
 
 // --- secureRandomIndex ---

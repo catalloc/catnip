@@ -7,7 +7,7 @@ import { guildConfig } from "./persistence/guild-config.ts";
 // --- CONFIG lazy getters ---
 
 Deno.test("CONFIG: required vars are eagerly loaded", () => {
-  assertEquals(CONFIG.appId, "test_app_id");
+  assertEquals(CONFIG.appId, "11111111111111111");
   assertEquals(CONFIG.publicKey, "e9ed0f268572a36c4dbf24af61334541c051ebdf2b5b44fc32ae071b21186d48");
   assertEquals(CONFIG.botToken, "test_bot_token");
 });

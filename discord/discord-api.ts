@@ -6,6 +6,8 @@
  */
 
 import { CONFIG } from "./constants.ts";
+import { cryptoJitter } from "./helpers/crypto.ts";
+import { assertSnowflake } from "./helpers/snowflake.ts";
 
 /** Isolate birth time — resets on each Val Town cold start. */
 const ISOLATE_START = Date.now();
@@ -31,6 +33,9 @@ export interface DiscordApiResult {
  * Build the Discord API path for application commands.
  */
 export function commandsPath(appId: string, guildId?: string, commandId?: string): string {
+  assertSnowflake(appId, "appId");
+  if (guildId) assertSnowflake(guildId, "guildId");
+  if (commandId) assertSnowflake(commandId, "commandId");
   let path = guildId
     ? `applications/${appId}/guilds/${guildId}/commands`
     : `applications/${appId}/commands`;
@@ -77,7 +82,7 @@ export async function discordBotFetch(
       if (response.status === 429 && attempt === 0) {
         const retryAfter = response.headers.get("Retry-After");
         const waitMs = retryAfter ? Math.ceil(parseFloat(retryAfter) * 1000) : 1000;
-        const jitter = Math.random() * Math.min(waitMs * 0.2, 2000);
+        const jitter = cryptoJitter(Math.min(waitMs * 0.2, 2000));
         const totalWait = waitMs + jitter;
         if (totalWait + 30_000 > remainingMs()) {
           const errorText = await response.text();
@@ -89,7 +94,7 @@ export async function discordBotFetch(
 
       // 5xx Server Error — wait 1-2s with jitter, retry once if time allows
       if (response.status >= 500 && attempt === 0 && remainingMs() > 32_000) {
-        await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
+        await new Promise((r) => setTimeout(r, 1000 + cryptoJitter(1000)));
         continue;
       }
 

@@ -8,7 +8,9 @@
 
 import { CONFIG } from "../constants.ts";
 import type { LinkedRolesUser, VerifyResult } from "./define-verifier.ts";
-import { sanitize } from "../webhook/logger.ts";
+import { createLogger, sanitize } from "../webhook/logger.ts";
+
+const logger = createLogger("OAuth");
 
 const API_BASE = "https://discord.com/api/v10";
 
@@ -45,7 +47,7 @@ export async function exchangeCode(
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`Token exchange failed (${res.status}): ${sanitize(text)}`);
+    logger.error(`Token exchange failed (${res.status}): ${sanitize(text)}`);
     throw new Error(`Token exchange failed (${res.status})`);
   }
   try {
@@ -66,7 +68,7 @@ export async function fetchUser(
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`Fetch user failed (${res.status}): ${sanitize(text)}`);
+    logger.error(`Fetch user failed (${res.status}): ${sanitize(text)}`);
     throw new Error(`Fetch user failed (${res.status})`);
   }
   try {
@@ -96,7 +98,7 @@ export async function fetchConnections(
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`Fetch connections failed (${res.status}): ${sanitize(text)}`);
+    logger.error(`Fetch connections failed (${res.status}): ${sanitize(text)}`);
     throw new Error(`Fetch connections failed (${res.status})`);
   }
   try {
@@ -130,7 +132,7 @@ export async function pushMetadata(
 
   if (!res.ok) {
     const text = await res.text();
-    console.error(`Push metadata failed (${res.status}): ${sanitize(text)}`);
+    logger.error(`Push metadata failed (${res.status}): ${sanitize(text)}`);
     throw new Error(`Push metadata failed (${res.status})`);
   }
 }

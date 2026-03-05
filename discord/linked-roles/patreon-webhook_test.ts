@@ -176,10 +176,10 @@ Deno.test("patreonKvKey: returns correct key format", () => {
 
 Deno.test("rate limiter: KV-based rate limit state", async () => {
   resetStore();
-  // The rate limiter uses kv.update on "ratelimit:patreon"
+  // The rate limiter uses kv.update on "ratelimit:patreon:{sourceId}"
   // Verify the pattern works with our mock
-  await kv.set("ratelimit:patreon", { count: 1, windowStart: Date.now() });
-  const state = await kv.get<{ count: number; windowStart: number }>("ratelimit:patreon");
+  await kv.set("ratelimit:patreon:global", { count: 1, windowStart: Date.now() });
+  const state = await kv.get<{ count: number; windowStart: number }>("ratelimit:patreon:global");
   assertEquals(state?.count, 1);
   assert(state!.windowStart > 0);
 });
