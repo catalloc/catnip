@@ -79,3 +79,28 @@ Deno.test("cache getOrFetch: calls fetcher and caches on miss", async () => {
   assertEquals(value2, 42);
   assertEquals(callCount, 1);
 });
+
+Deno.test("cache getOrFetch: re-fetches after TTL expiration", async () => {
+  const cache = new ExpiringCache<string, number>(0, 100); // 0ms TTL
+  let callCount = 0;
+  await cache.getOrFetch("a", async () => { callCount++; return 1; });
+  assertEquals(callCount, 1);
+  // TTL expired immediately, should re-fetch
+  const value = await cache.getOrFetch("a", async () => { callCount++; return 2; });
+  assertEquals(value, 2);
+  assertEquals(callCount, 2);
+});
+
+Deno.test("cache getOrFetch: fetcher exception propagates", async () => {
+  const cache = new ExpiringCache<string, number>(60_000, 100);
+  let threw = false;
+  try {
+    await cache.getOrFetch("a", async () => { throw new Error("boom"); });
+  } catch (e) {
+    threw = true;
+    assertEquals((e as Error).message, "boom");
+  }
+  assertEquals(threw, true);
+  // Value should not be cached after error
+  assertEquals(cache.get("a"), undefined);
+});

@@ -287,3 +287,39 @@ Deno.test("ticket command: has 3 subcommands", () => {
   assert(names.includes("close"));
   assert(names.includes("setup"));
 });
+
+// --- claimTicketSlot / releaseTicketSlot ---
+
+import { claimTicketSlot, releaseTicketSlot } from "./ticket.ts";
+
+Deno.test("claimTicketSlot: assigns slot returns true", async () => {
+  resetStore();
+  const result = await claimTicketSlot("g1", "u_slot");
+  assertEquals(result, true);
+});
+
+Deno.test("releaseTicketSlot: decrements counter", async () => {
+  resetStore();
+  await claimTicketSlot("g1", "u_rel");
+  await claimTicketSlot("g1", "u_rel");
+  await releaseTicketSlot("g1", "u_rel");
+  // Should have 1 slot remaining, so a 3rd claim should work
+  const result = await claimTicketSlot("g1", "u_rel");
+  assertEquals(result, true);
+});
+
+// --- buildStaffEmbed edge cases ---
+
+Deno.test("buildStaffEmbed: closed without closeReason omits reason field", () => {
+  const ticket = makeTicket({ status: "closed", closedBy: "staff1" });
+  const embed = buildStaffEmbed(ticket);
+  const reasonField = embed.fields.find((f: any) => f.name === "Reason");
+  assertEquals(reasonField, undefined);
+});
+
+Deno.test("buildStaffEmbed: empty joinedStaff omits staff field", () => {
+  const ticket = makeTicket({ joinedStaff: [] });
+  const embed = buildStaffEmbed(ticket);
+  const staffField = embed.fields.find((f: any) => f.name === "Staff");
+  assertEquals(staffField, undefined);
+});

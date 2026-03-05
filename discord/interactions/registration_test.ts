@@ -210,3 +210,36 @@ Deno.test("deregisterAllFromGuild: handles error gracefully", async () => {
     restoreFetch();
   }
 });
+
+// --- registerCommand: global type uses global path ---
+
+import { syncAllGuilds } from "./registration.ts";
+
+Deno.test("registerCommand: global command uses global path", async () => {
+  // "server" is a global command in the registry
+  mockFetch({ default: { status: 200, body: { id: "cmd1" } } });
+  try {
+    const results = await registerCommand("server", "100000000000000123");
+    assertEquals(results.length, 1);
+    assertEquals(results[0].guildId, "global");
+    // Should have used POST to global path
+    const calls = getCalls();
+    assert(calls.length >= 1);
+    assert(!calls[0].url.includes("guilds"), "Global command should not use guild path");
+  } finally {
+    restoreFetch();
+  }
+});
+
+// --- syncAllGuilds ---
+
+Deno.test("syncAllGuilds: returns results for configured guilds", async () => {
+  mockFetch({ default: { status: 200, body: [] } });
+  try {
+    const results = await syncAllGuilds();
+    // Should return an array (might be empty if no guilds configured)
+    assert(Array.isArray(results));
+  } finally {
+    restoreFetch();
+  }
+});

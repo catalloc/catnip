@@ -92,3 +92,68 @@ Deno.test("buildPollEmbed: ended poll shows results", () => {
   assertEquals(embed.color, EmbedColors.WARNING);
   assert(embed.description!.includes("Pick one"));
 });
+
+// --- Poll command execution tests ---
+
+import "../../../test/_mocks/sqlite.ts";
+import { sqlite } from "../../../test/_mocks/sqlite.ts";
+import { kv } from "../../persistence/kv.ts";
+import { mockFetch, restoreFetch } from "../../../test/_mocks/fetch.ts";
+import pollCommand from "./poll.ts";
+
+function resetStore() {
+  (sqlite as any)._reset();
+}
+
+Deno.test("poll create: duplicate options rejected", async () => {
+  resetStore();
+  mockFetch({ default: { status: 200, body: { id: "msg1" } } });
+  try {
+    const result = await pollCommand.execute({
+      guildId: "g_poll",
+      userId: "u1",
+      options: { subcommand: "create", question: "Q", options: "A,B,a", channel: "c1" },
+      config: {},
+    });
+    assertEquals(result.success, false);
+    assert(result.error?.includes("Duplicate"));
+  } finally {
+    restoreFetch();
+  }
+});
+
+Deno.test("poll create: empty options (all whitespace) rejected", async () => {
+  resetStore();
+  const result = await pollCommand.execute({
+    guildId: "g_poll",
+    userId: "u1",
+    options: { subcommand: "create", question: "Q", options: " , , ", channel: "c1" },
+    config: {},
+  });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("at least 2"));
+});
+
+Deno.test("poll end: no active poll returns error", async () => {
+  resetStore();
+  const result = await pollCommand.execute({
+    guildId: "g_no_poll",
+    userId: "u1",
+    options: { subcommand: "end" },
+    config: {},
+  });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("No active poll"));
+});
+
+Deno.test("poll: unknown subcommand returns error", async () => {
+  resetStore();
+  const result = await pollCommand.execute({
+    guildId: "g1",
+    userId: "u1",
+    options: { subcommand: "invalid" },
+    config: {},
+  });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("subcommand"));
+});

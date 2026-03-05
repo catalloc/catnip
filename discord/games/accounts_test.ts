@@ -110,3 +110,25 @@ Deno.test("accounts listAccounts: empty guild", async () => {
   const list = await accounts.listAccounts("g1");
   assertEquals(list.length, 0);
 });
+
+// --- creditBalance updates lifetimeEarned ---
+
+Deno.test("accounts creditBalance: accumulates lifetimeEarned", async () => {
+  resetStore();
+  await accounts.creditBalance("g1", "u_lt", 100);
+  await accounts.creditBalance("g1", "u_lt", 50);
+  const account = await accounts.getAccount("g1", "u_lt");
+  assertEquals(account?.balance, 150);
+  assertEquals(account?.lifetimeEarned, 150);
+});
+
+// --- multiple credits and debits ---
+
+Deno.test("accounts: credit then debit keeps lifetimeEarned", async () => {
+  resetStore();
+  await accounts.creditBalance("g1", "u_cd", 200);
+  await accounts.debitBalance("g1", "u_cd", 50);
+  const account = await accounts.getAccount("g1", "u_cd");
+  assertEquals(account?.balance, 150);
+  assertEquals(account?.lifetimeEarned, 200);
+});

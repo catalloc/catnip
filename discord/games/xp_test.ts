@@ -139,3 +139,25 @@ Deno.test("xp getLevel: returns 0 for new user", async () => {
   const level = await xp.getLevel("g1", "u1");
   assertEquals(level, 0);
 });
+
+Deno.test("xp getLevels: batch fetch for multiple users", async () => {
+  resetStore();
+  await xp.grantXp("g1", "u1", 100);
+  await xp.grantXp("g1", "u2", 500);
+  const levels = await xp.getLevels("g1", ["u1", "u2", "u3"]);
+  assertEquals(levels.get("u1"), 1);
+  assert(levels.get("u2")! >= 2);
+  assertEquals(levels.get("u3"), 0); // no XP, defaults to 0
+});
+
+Deno.test("makeXpBar: at 0% progress", () => {
+  const bar = makeXpBar(0, 10);
+  assert(bar.startsWith("░░░░░░░░░░"));
+});
+
+Deno.test("makeXpBar: at 100% (level boundary)", () => {
+  // At exactly level 1 (100 XP), progress to next is 0/needed
+  const bar = makeXpBar(100, 10);
+  assert(bar.includes("░░░░░░░░░░"));
+  assert(bar.includes("0/"));
+});

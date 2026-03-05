@@ -46,3 +46,11 @@ Deno.test("verifyState: malformed input returns false", async () => {
   assertEquals(await verifyState("nodotshere"), false);
   assertEquals(await verifyState(""), false);
 });
+
+Deno.test("verifyState: malformed state with no separator fails", async () => {
+  assertEquals(await verifyState("abc123xyz"), false);
+});
+
+Deno.test("verifyState: empty string fails", async () => {
+  assertEquals(await verifyState(""), false);
+});

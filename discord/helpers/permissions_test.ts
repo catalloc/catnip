@@ -269,3 +269,27 @@ Deno.test("kvDeny: rejects non-admin", async () => {
   assertEquals(result.success, false);
   assertEquals(result.error!.includes("admin"), true);
 });
+
+// --- empty allowedRoles + empty allowedUsers = open access ---
+
+Deno.test("checkEntityAccess: empty arrays = open access (defaultOpen=true)", async () => {
+  resetStore();
+  const entry: PermissionEntry = { allowedRoles: [], allowedUsers: [] };
+  assertEquals(await checkEntityAccess(entry, "g1", "u1", [], "0"), true);
+});
+
+// --- both allowedRoles and allowedUsers set: either grants access ---
+
+Deno.test("checkEntityAccess: role match grants access even with non-matching user", async () => {
+  resetStore();
+  const entry: PermissionEntry = { allowedRoles: ["r1"], allowedUsers: ["u5"] };
+  // User u2 has role r1 — should be allowed even though u2 is not in allowedUsers
+  assertEquals(await checkEntityAccess(entry, "g1", "u2", ["r1"], "0"), true);
+});
+
+Deno.test("checkEntityAccess: user match grants access even with non-matching role", async () => {
+  resetStore();
+  const entry: PermissionEntry = { allowedRoles: ["r1"], allowedUsers: ["u5"] };
+  // User u5 has no matching roles — should be allowed because u5 is in allowedUsers
+  assertEquals(await checkEntityAccess(entry, "g1", "u5", ["r999"], "0"), true);
+});

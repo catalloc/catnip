@@ -261,3 +261,47 @@ Deno.test("kv.set: overwriting with new dueAt updates due_at", async () => {
   assertEquals((await kv.listDue(100)).length, 0);
   assertEquals((await kv.listDue(9999)).length, 1);
 });
+
+// --- escapeLikePrefix ---
+
+Deno.test("kv.list: prefix containing % is escaped", async () => {
+  resetStore();
+  await kv.set("100%:a", "x");
+  await kv.set("100:b", "y");
+  const result = await kv.list("100%:");
+  assertEquals(result.length, 1);
+  assertEquals(result[0].key, "100%:a");
+});
+
+Deno.test("kv.list: prefix containing _ is escaped", async () => {
+  resetStore();
+  await kv.set("a_b:1", "x");
+  await kv.set("axb:2", "y");
+  const result = await kv.list("a_b:");
+  assertEquals(result.length, 1);
+  assertEquals(result[0].key, "a_b:1");
+});
+
+// --- set value size ---
+
+Deno.test("kv.set: large value exceeding MAX_VALUE_SIZE throws", async () => {
+  resetStore();
+  const bigValue = "x".repeat(600 * 1024);
+  let threw = false;
+  try {
+    await kv.set("big", bigValue);
+  } catch (e) {
+    threw = true;
+    assertEquals((e as Error).message.includes("too large"), true);
+  }
+  assertEquals(threw, true);
+});
+
+// --- claimUpdate edge case ---
+
+Deno.test("kv.claimUpdate: returns null for missing entry (no insert)", async () => {
+  resetStore();
+  const result = await kv.claimUpdate<{ x: number }>("nonexistent2", (c) => ({ ...c, x: 99 }));
+  assertEquals(result, null);
+  assertEquals(await kv.get("nonexistent2"), null);
+});

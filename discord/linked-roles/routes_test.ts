@@ -159,3 +159,44 @@ Deno.test("handleLinkedRolesCallback: handles API error gracefully", async () =>
     restoreFetch();
   }
 });
+
+Deno.test("handleLinkedRolesRedirect: null verifier still generates valid redirect URL", async () => {
+  setVerifier(null as any);
+  const req = new Request("https://example.com/linked-roles");
+  const res = await handleLinkedRolesRedirect(req);
+  assertEquals(res.status, 302);
+  const location = res.headers.get("Location")!;
+  assert(location.startsWith("https://discord.com/oauth2/authorize?"));
+});
+
+Deno.test("handleLinkedRolesCallback: null verifier returns error page", async () => {
+  setVerifier(null as any);
+  const validState = await generateState();
+  const req = new Request(
+    `https://example.com/linked-roles/callback?code=abc&state=${validState}`,
+  );
+  const res = await handleLinkedRolesCallback(req);
+  const text = await res.text();
+  assert(text.includes("No verifier") || text.includes("error") || text.includes("Error"));
+});
+
+Deno.test("handleLinkedRolesCallback: global_name null falls back to username", async () => {
+  setVerifier(testVerifier);
+  const validState = await generateState();
+
+  mockFetch({
+    responses: [
+      { status: 200, body: { access_token: "tok", token_type: "Bearer", expires_in: 3600, refresh_token: "r", scope: "identify" } },
+      { status: 200, body: { id: "123", username: "fallbackuser", discriminator: "0", avatar: null, global_name: null } },
+      { status: 200, body: {} },
+    ],
+  });
+  try {
+    const req = new Request(`https://example.com/linked-roles/callback?code=c&state=${validState}`);
+    const res = await handleLinkedRolesCallback(req);
+    const text = await res.text();
+    assert(text.includes("fallbackuser") || res.status === 200);
+  } finally {
+    restoreFetch();
+  }
+});

@@ -64,3 +64,48 @@ Deno.test("remind: max 10 limit enforced", async () => {
   assertEquals(result.success, false);
   assert(result.error?.includes("at most 10"));
 });
+
+Deno.test("remind: 30-day boundary is accepted", async () => {
+  resetStore();
+  const mod = (await import("./remind.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u_30d",
+    options: { duration: "30d", message: "long reminder", channelId: "c1" },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, true);
+  assert(result.message?.includes("Reminder set"));
+});
+
+Deno.test("remind: duration exceeding 30 days is rejected", async () => {
+  resetStore();
+  const mod = (await import("./remind.ts")).default;
+  const result = await mod.execute({
+    guildId: "g1",
+    userId: "u_31d",
+    options: { duration: "31d", message: "too long", channelId: "c1" },
+    memberRoles: [],
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("Invalid duration"));
+});
+
+Deno.test("remind: stored reminder has correct dueAt", async () => {
+  resetStore();
+  const before = Date.now();
+  const mod = (await import("./remind.ts")).default;
+  await mod.execute({
+    guildId: "g1",
+    userId: "u_due",
+    options: { duration: "2h", message: "check dueAt", channelId: "c1" },
+    memberRoles: [],
+  } as any);
+  const after = Date.now();
+  const entries = await kv.list("reminder:u_due:");
+  assertEquals(entries.length, 1);
+  const reminder = entries[0].value as Reminder;
+  // dueAt should be roughly now + 2h (7200000ms)
+  assert(reminder.dueAt >= before + 7200000);
+  assert(reminder.dueAt <= after + 7200000);
+});

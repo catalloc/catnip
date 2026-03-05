@@ -148,6 +148,64 @@ Deno.test("server: returns error for missing subcommand", async () => {
   assert(result.error!.includes("subcommand"));
 });
 
+// --- admin:add at MAX_ADMIN_ROLES limit ---
+
+Deno.test("server admin:add: rejects at MAX_ADMIN_ROLES limit", async () => {
+  resetStore();
+  // guild-config MAX_ADMIN_ROLES is 25
+  for (let i = 0; i < 25; i++) {
+    await guildConfig.addAdminRole(GUILD, `role_${i}`);
+  }
+  const result = await serverCmd.execute(makeOpts("admin:add", { role: "overflow_role" }));
+  assertEquals(result.success, false);
+  assert(result.error!.includes("Maximum"));
+});
+
+// --- autocomplete ---
+
+Deno.test("server autocomplete: returns choices", async () => {
+  resetStore();
+  const body = {
+    guild_id: GUILD,
+    data: {
+      options: [{
+        name: "commands",
+        type: 2,
+        options: [{
+          name: "enable",
+          type: 1,
+          options: [{ name: "command", value: "", focused: true }],
+        }],
+      }],
+    },
+  };
+  const resp = await serverCmd.autocomplete!(body, {});
+  const data = await resp.json();
+  assertEquals(data.type, 8); // APPLICATION_COMMAND_AUTOCOMPLETE_RESULT
+  assert(Array.isArray(data.data.choices));
+});
+
+Deno.test("server autocomplete: filters by query", async () => {
+  resetStore();
+  const body = {
+    guild_id: GUILD,
+    data: {
+      options: [{
+        name: "commands",
+        type: 2,
+        options: [{
+          name: "enable",
+          type: 1,
+          options: [{ name: "command", value: "zzz_no_match", focused: true }],
+        }],
+      }],
+    },
+  };
+  const resp = await serverCmd.autocomplete!(body, {});
+  const data = await resp.json();
+  assertEquals(data.data.choices.length, 0);
+});
+
 // --- command metadata ---
 
 Deno.test("server: command metadata is correct", () => {

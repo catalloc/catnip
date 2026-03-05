@@ -121,3 +121,118 @@ Deno.test("giveaway reroll: success with valid ended giveaway", async () => {
     restoreFetch();
   }
 });
+
+// --- create: duration < 60s returns error ---
+
+Deno.test("giveaway create: duration < 60s returns error", async () => {
+  resetStore();
+  mockFetch({ default: { status: 200, body: { id: "msg1" } } });
+  try {
+    const result = await giveawayCommand.execute({
+      guildId: "g1",
+      userId: "admin1",
+      options: { subcommand: "create", prize: "Prize", duration: "30s", channel: "c1", winners: 1 },
+      config: {},
+    });
+    assertEquals(result.success, false);
+    assert(result.error?.includes("at least 1 minute"));
+  } finally {
+    restoreFetch();
+  }
+});
+
+// --- create: POST message failure returns error ---
+
+Deno.test("giveaway create: POST message failure returns error", async () => {
+  resetStore();
+  mockFetch({ default: { status: 403, body: "Forbidden" } });
+  try {
+    const result = await giveawayCommand.execute({
+      guildId: "g1",
+      userId: "admin1",
+      options: { subcommand: "create", prize: "Prize", duration: "1h", channel: "c1" },
+      config: {},
+    });
+    assertEquals(result.success, false);
+    assert(result.error?.includes("Failed to post"));
+  } finally {
+    restoreFetch();
+  }
+});
+
+// --- end: no active giveaway returns error ---
+
+Deno.test("giveaway end: no active giveaway returns error", async () => {
+  resetStore();
+  const result = await giveawayCommand.execute({
+    guildId: "g_no_giveaway",
+    userId: "admin1",
+    options: { subcommand: "end" },
+    config: {},
+  });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("No active giveaway"));
+});
+
+// --- reroll: zero entrants returns error ---
+
+Deno.test("giveaway reroll: zero entrants returns error", async () => {
+  resetStore();
+  const guildId = "g_empty";
+  await kv.set(giveawayKey(guildId), {
+    prize: "Prize",
+    channelId: "c1",
+    messageId: "m1",
+    endsAt: Date.now() - 1000,
+    winnersCount: 1,
+    entrants: [],
+    ended: true,
+    winners: [],
+  } satisfies GiveawayConfig);
+  const result = await giveawayCommand.execute({
+    guildId,
+    userId: "admin1",
+    options: { subcommand: "reroll" },
+    config: {},
+  });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("No entrants"));
+});
+
+// --- reroll: giveaway not ended returns error ---
+
+Deno.test("giveaway reroll: giveaway not ended returns error", async () => {
+  resetStore();
+  const guildId = "g_active";
+  await kv.set(giveawayKey(guildId), {
+    prize: "Prize",
+    channelId: "c1",
+    messageId: "m1",
+    endsAt: Date.now() + 3600000,
+    winnersCount: 1,
+    entrants: ["u1"],
+    ended: false,
+  } satisfies GiveawayConfig);
+  const result = await giveawayCommand.execute({
+    guildId,
+    userId: "admin1",
+    options: { subcommand: "reroll" },
+    config: {},
+  });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("still active"));
+});
+
+// --- unknown subcommand ---
+
+Deno.test("giveaway: unknown subcommand returns error", async () => {
+  resetStore();
+  const result = await giveawayCommand.execute({
+    guildId: "g1",
+    userId: "admin1",
+    options: { subcommand: "invalid" },
+    config: {},
+  });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("subcommand"));
+});

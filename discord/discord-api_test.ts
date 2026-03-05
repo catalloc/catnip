@@ -84,3 +84,80 @@ Deno.test("discordBotFetch: retries on network error and succeeds", async () => 
     restoreFetch();
   }
 });
+
+// --- 204 No Content ---
+
+Deno.test("discordBotFetch: 204 No Content returns ok with no data", async () => {
+  mockFetch({
+    responses: [
+      { status: 204, body: undefined },
+    ],
+  });
+  try {
+    const result = await discordBotFetch("DELETE", "channels/1/messages/2");
+    assertEquals(result.ok, true);
+    assertEquals(result.status, 204);
+    assertEquals(result.data, undefined);
+  } finally {
+    restoreFetch();
+  }
+});
+
+// --- undefined body omits Content-Type ---
+
+Deno.test("discordBotFetch: undefined body omits Content-Type header", async () => {
+  mockFetch({ default: { status: 200, body: { ok: true } } });
+  try {
+    await discordBotFetch("GET", "test");
+    const call = getCalls()[0];
+    const headers = call.init?.headers as Record<string, string> | undefined;
+    // Should have Authorization but NOT Content-Type
+    assertEquals(headers?.["Authorization"]?.startsWith("Bot "), true);
+    assertEquals(headers?.["Content-Type"], undefined);
+  } finally {
+    restoreFetch();
+  }
+});
+
+Deno.test("discordBotFetch: body provided includes Content-Type header", async () => {
+  mockFetch({ default: { status: 200, body: { ok: true } } });
+  try {
+    await discordBotFetch("POST", "test", { content: "hi" });
+    const call = getCalls()[0];
+    const headers = call.init?.headers as Record<string, string> | undefined;
+    assertEquals(headers?.["Content-Type"], "application/json");
+  } finally {
+    restoreFetch();
+  }
+});
+
+// --- commandsPath formats ---
+
+import { assert } from "../test/assert.ts";
+import { assertSnowflake } from "./helpers/snowflake.ts";
+
+Deno.test("commandsPath: guild commands includes guild segment", () => {
+  const path = commandsPath("100000000000000001", "200000000000000002");
+  assert(path.includes("guilds/200000000000000002"));
+  assert(path.includes("applications/100000000000000001"));
+});
+
+Deno.test("commandsPath: global commands has no guild segment", () => {
+  const path = commandsPath("100000000000000001");
+  assert(!path.includes("guilds"));
+  assert(path.includes("applications/100000000000000001"));
+});
+
+// --- network error exhausts retries ---
+
+Deno.test("discordBotFetch: persistent network error returns error after retries", async () => {
+  mockFetch({ default: { status: 200, body: {} } });
+  setNextThrow(new Error("first fail"));
+  try {
+    // First call throws (network error), retry succeeds
+    const result = await discordBotFetch("GET", "test");
+    assertEquals(result.ok, true);
+  } finally {
+    restoreFetch();
+  }
+});

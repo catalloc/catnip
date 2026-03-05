@@ -178,6 +178,142 @@ Deno.test({ name: "logger: buffer capped at 100 on repeated flush failures", san
   }
 }});
 
+// --- sanitize ---
+
+import { sanitize } from "./logger.ts";
+
+Deno.test("sanitize: redacts Bearer tokens", () => {
+  const input = "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abc.def";
+  const result = sanitize(input);
+  assert(result.includes("Bearer [REDACTED]"));
+  assert(!result.includes("eyJhbGciOiJIUzI1NiJ9"));
+});
+
+Deno.test("sanitize: redacts Bot tokens", () => {
+  const input = "Bot MTIzNDU2Nzg5.abc.def-token";
+  const result = sanitize(input);
+  assert(result.includes("Bot [REDACTED]"));
+  assert(!result.includes("MTIzNDU2Nzg5"));
+});
+
+Deno.test("sanitize: redacts webhook URLs", () => {
+  const input = "Sending to https://discord.com/api/webhooks/123456789/ABCdef-token_123";
+  const result = sanitize(input);
+  assert(result.includes("[WEBHOOK_URL_REDACTED]"));
+  assert(!result.includes("ABCdef-token_123"));
+});
+
+Deno.test("sanitize: leaves normal text unchanged", () => {
+  const input = "Normal log message with no secrets";
+  assertEquals(sanitize(input), input);
+});
+
+// --- error level triggers immediate flush ---
+
+Deno.test("logger: error level triggers immediate flush", async () => {
+  const sent: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (_input: string | URL | Request, init?: RequestInit) => {
+    sent.push(init?.body as string);
+    return Promise.resolve(new Response("ok", { status: 200 }));
+  };
+  try {
+    const logger = new DiscordLogger({
+      context: "ErrorFlush",
+      webhookUrl: "https://discord.com/api/webhooks/test/token",
+      fallbackToConsole: false,
+      batchIntervalMs: 100_000, // very long to prevent timed flush
+    });
+    logger.error("critical failure");
+    // Wait briefly for the async flush to complete
+    await new Promise((r) => setTimeout(r, 100));
+    assert(sent.length > 0, "Error should trigger immediate flush");
+    await logger.finalize();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// --- maxBatchSize triggers flush ---
+
+Deno.test("logger: maxBatchSize triggers flush", async () => {
+  const sent: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (_input: string | URL | Request, init?: RequestInit) => {
+    sent.push(init?.body as string);
+    return Promise.resolve(new Response("ok", { status: 200 }));
+  };
+  try {
+    const logger = new DiscordLogger({
+      context: "BatchFlush",
+      webhookUrl: "https://discord.com/api/webhooks/test/token",
+      fallbackToConsole: false,
+      maxBatchSize: 3,
+      batchIntervalMs: 100_000,
+    });
+    logger.info("msg1");
+    logger.info("msg2");
+    logger.info("msg3"); // should trigger flush at batch size 3
+    await new Promise((r) => setTimeout(r, 100));
+    assert(sent.length > 0, "Reaching maxBatchSize should trigger flush");
+    await logger.finalize();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// --- flush while flushing is no-op ---
+
+Deno.test("logger: flush while already flushing does not duplicate", async () => {
+  let flushCount = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    flushCount++;
+    await new Promise((r) => setTimeout(r, 50)); // Simulate slow send
+    return new Response("ok", { status: 200 });
+  };
+  try {
+    const logger = new DiscordLogger({
+      context: "DupFlush",
+      webhookUrl: "https://discord.com/api/webhooks/test/token",
+      fallbackToConsole: false,
+      batchIntervalMs: 100_000,
+    });
+    logger.info("msg1");
+    // Trigger flush, then immediately try again — second should be skipped
+    const p1 = logger.flush();
+    const p2 = logger.flush(); // isFlushing = true, should no-op
+    await Promise.all([p1, p2]);
+    assertEquals(flushCount, 1);
+    await logger.finalize();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// --- createLogger registers in global instances ---
+
+Deno.test("createLogger: registered logger flushes via finalizeAllLoggers", async () => {
+  const sent: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (_input: string | URL | Request, init?: RequestInit) => {
+    sent.push(init?.body as string);
+    return Promise.resolve(new Response("ok", { status: 200 }));
+  };
+  try {
+    const logger = createLogger("GlobalTest", {
+      webhookUrl: "https://discord.com/api/webhooks/test/token",
+      fallbackToConsole: false,
+      batchIntervalMs: 100_000,
+    });
+    logger.info("tracked message");
+    await finalizeAllLoggers();
+    assert(sent.length > 0, "finalizeAllLoggers should flush all created loggers");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 // --- finalizeAllLoggers timeout ---
 
 Deno.test("finalizeAllLoggers: completes even with no loggers", async () => {

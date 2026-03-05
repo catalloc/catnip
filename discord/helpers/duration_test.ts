@@ -57,3 +57,13 @@ Deno.test("parseDuration: case-insensitive units", () => {
 Deno.test("parseDuration: whitespace between value and unit", () => {
   assertEquals(parseDuration("1 h 30 m"), 5_400_000);
 });
+
+Deno.test("parseDuration: duplicate units returns null", () => {
+  assertEquals(parseDuration("1h2h"), null);
+  assertEquals(parseDuration("5m10m"), null);
+});
+
+Deno.test("parseDuration: just over 30-day boundary returns null", () => {
+  assertEquals(parseDuration("30d1s"), null);
+  assertEquals(parseDuration("29d24h1s"), null);
+});

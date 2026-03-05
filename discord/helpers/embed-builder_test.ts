@@ -106,3 +106,28 @@ Deno.test("embed: factory returns EmbedBuilder instance", () => {
   const builder = embed();
   assertEquals(builder instanceof EmbedBuilder, true);
 });
+
+Deno.test("EmbedBuilder: build with all optional fields set", () => {
+  const result = new EmbedBuilder()
+    .title("Title")
+    .description("Desc")
+    .url("https://example.com")
+    .color(0x00ff00)
+    .field("F1", "V1", true)
+    .footer("Footer", "https://icon.png")
+    .image("https://img.png")
+    .thumbnail("https://thumb.png")
+    .author("Author", "https://author.url", "https://author-icon.png")
+    .timestamp("2025-01-01T00:00:00.000Z")
+    .build();
+  assertEquals(result.title, "Title");
+  assertEquals(result.description, "Desc");
+  assertEquals(result.url, "https://example.com");
+  assertEquals(result.color, 0x00ff00);
+  assertEquals(result.fields?.length, 1);
+  assertEquals(result.footer!.text, "Footer");
+  assertEquals(result.image!.url, "https://img.png");
+  assertEquals(result.thumbnail!.url, "https://thumb.png");
+  assertEquals(result.author!.name, "Author");
+  assertEquals(result.timestamp, "2025-01-01T00:00:00.000Z");
+});

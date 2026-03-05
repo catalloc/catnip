@@ -147,3 +147,58 @@ Deno.test("blackjack session: expired session returns null", async () => {
   const retrieved = await blackjack.getSession("g1", "u1");
   assertEquals(retrieved, null);
 });
+
+// --- playDealerHand ---
+
+import { playDealerHand } from "./blackjack.ts";
+
+Deno.test("playDealerHand: hits until >= 17 then stops", () => {
+  const session = {
+    dealerHand: [makeCard("2"), makeCard("3")], // value = 5
+    deck: [makeCard("4"), makeCard("5"), makeCard("6"), makeCard("K")],
+  } as any;
+  const result = playDealerHand(session);
+  assert(handValue(result.dealerHand) >= 17);
+});
+
+// --- determineOutcome: dealer bust ---
+
+Deno.test("determineOutcome: dealer bust", () => {
+  const session = {
+    playerHand: [makeCard("10"), makeCard("8")], // 18
+    dealerHand: [makeCard("K"), makeCard("Q"), makeCard("5")], // 25 (bust)
+  } as any;
+  assertEquals(determineOutcome(session), "dealer-bust");
+});
+
+// --- determineOutcome: player wins (higher value) ---
+
+Deno.test("determineOutcome: player wins with higher value", () => {
+  const session = {
+    playerHand: [makeCard("10"), makeCard("9")], // 19
+    dealerHand: [makeCard("10"), makeCard("8")], // 18
+  } as any;
+  assertEquals(determineOutcome(session), "player-win");
+});
+
+// --- determineOutcome: dealer wins ---
+
+Deno.test("determineOutcome: dealer wins with higher value", () => {
+  const session = {
+    playerHand: [makeCard("10"), makeCard("7")], // 17
+    dealerHand: [makeCard("10"), makeCard("9")], // 19
+  } as any;
+  assertEquals(determineOutcome(session), "dealer-win");
+});
+
+// --- updateSession persists and retrieves ---
+
+Deno.test("blackjack session: updateSession persists changes", async () => {
+  resetStore();
+  const session = await blackjack.createSession("g1", "u_upd", "ch1", "msg1", 100);
+  session.status = "standing";
+  await blackjack.updateSession(session);
+  const retrieved = await blackjack.getSession("g1", "u_upd");
+  assert(retrieved);
+  assertEquals(retrieved!.status, "standing");
+});

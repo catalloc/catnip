@@ -84,3 +84,24 @@ Deno.test("guildConfig: listGuilds returns configured guilds", async () => {
   assertEquals(found !== undefined, true);
   assertEquals(found?.adminRoleIds, ["role_a", "role_b"]);
 });
+
+Deno.test("guildConfig: adding 26th admin role fails (MAX_ADMIN_ROLES=25)", async () => {
+  const gid = "max_roles_guild";
+  const roles = Array.from({ length: 25 }, (_, i) => `role_${i}`);
+  await guildConfig.setAdminRoles(gid, roles);
+  const added = await guildConfig.addAdminRole(gid, "role_26");
+  assertEquals(added, false);
+  const stored = await guildConfig.getAdminRoleIds(gid);
+  assertEquals(stored.length, 25);
+});
+
+Deno.test("guildConfig: adding 51st enabled command fails (MAX_ENABLED_COMMANDS=50)", async () => {
+  const gid = "max_cmds_guild";
+  for (let i = 0; i < 50; i++) {
+    await guildConfig.enableCommand(gid, `cmd_${i}`);
+  }
+  const enabled = await guildConfig.enableCommand(gid, "cmd_51");
+  assertEquals(enabled, false);
+  const cmds = await guildConfig.getEnabledCommands(gid);
+  assertEquals(cmds.length, 50);
+});

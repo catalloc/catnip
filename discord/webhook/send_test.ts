@@ -223,3 +223,57 @@ Deno.test("send: all chunks fail — partialFailure is false", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+// --- embed >6000 chars gets chunked ---
+
+Deno.test("chunkEmbeds: large embeds >6000 chars split into multiple chunks", () => {
+  // 3 embeds each with ~2500 char descriptions = 7500 total
+  const bigEmbed = { description: "y".repeat(2500) };
+  const result = chunkEmbeds([bigEmbed, bigEmbed, bigEmbed]);
+  assert(result.length >= 2, "Should split into at least 2 chunks");
+  for (const chunk of result) {
+    const totalSize = chunk.reduce((sum, e) => sum + calculateEmbedSize(e), 0);
+    assert(totalSize <= DISCORD_LIMITS.totalCharacters, `Chunk exceeds ${DISCORD_LIMITS.totalCharacters} chars`);
+  }
+});
+
+// --- sanitizeEmbed truncates field name and value ---
+
+Deno.test("sanitizeEmbed: truncates field name to 256 and value to 1024", () => {
+  const result = sanitizeEmbed({
+    fields: [{ name: "x".repeat(300), value: "v".repeat(1500) }],
+  });
+  assert(result.fields![0].name.length <= DISCORD_LIMITS.fieldName);
+  assert(result.fields![0].value.length <= DISCORD_LIMITS.fieldValue);
+  assert(result.fields![0].name.endsWith("..."));
+  assert(result.fields![0].value.endsWith("..."));
+});
+
+// --- send with embed array ---
+
+Deno.test("send: single embed sends successfully", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () => Promise.resolve(new Response(JSON.stringify({ id: "1" }), { status: 200 }));
+  try {
+    const result = await send({ title: "Test", description: "Hello" }, "https://discord.com/api/webhooks/test/token");
+    assertEquals(result.success, true);
+    assertEquals(result.sentDirectly, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// --- send with no webhook URL ---
+
+Deno.test("send: no webhook URL returns error", async () => {
+  // Save and clear the config webhook
+  const origEnv = Deno.env.get("DISCORD_CONSOLE_WEBHOOK");
+  Deno.env.delete("DISCORD_CONSOLE_WEBHOOK");
+  try {
+    const result = await send("test", undefined);
+    assertEquals(result.success, false);
+    assert(result.error?.includes("No webhook URL"));
+  } finally {
+    if (origEnv) Deno.env.set("DISCORD_CONSOLE_WEBHOOK", origEnv);
+  }
+});

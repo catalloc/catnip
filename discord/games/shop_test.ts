@@ -94,3 +94,50 @@ Deno.test("shop buyItem: fails for nonexistent item", async () => {
   assertEquals(result.success, false);
   assert(result.error?.includes("not found"));
 });
+
+Deno.test("shop getEnabledItems: filters out disabled items", async () => {
+  resetStore();
+  await shop.addItem(guildId, { name: "A", price: 10, description: "a", type: "custom" });
+  await shop.addItem(guildId, { name: "B", price: 20, description: "b", type: "custom" });
+  // Manually disable item B
+  const catalog = await shop.getCatalog(guildId);
+  catalog.items[1].enabled = false;
+  const { kv } = await import("../persistence/kv.ts");
+  await kv.set(_internals.shopKey(guildId), catalog);
+
+  const enabled = await shop.getEnabledItems(guildId);
+  assertEquals(enabled.length, 1);
+  assertEquals(enabled[0].name, "A");
+});
+
+Deno.test("shop buyItem: profile-title type sets title", async () => {
+  resetStore();
+  const { item } = await shop.addItem(guildId, {
+    name: "Title", price: 10, description: "title item",
+    type: "profile-title", profileTitle: "King",
+  });
+  await accounts.creditBalance(guildId, userId, 100);
+  const result = await shop.buyItem(guildId, userId, item!.id);
+  assertEquals(result.success, true);
+});
+
+Deno.test("shop buyItem: profile-badge type adds badge", async () => {
+  resetStore();
+  const { item } = await shop.addItem(guildId, {
+    name: "Badge", price: 10, description: "badge item",
+    type: "profile-badge", profileBadge: ":star:",
+  });
+  await accounts.creditBalance(guildId, userId, 100);
+  const result = await shop.buyItem(guildId, userId, item!.id);
+  assertEquals(result.success, true);
+});
+
+Deno.test("shop addItem: MAX_SHOP_ITEMS boundary rejects 51st", async () => {
+  resetStore();
+  for (let i = 0; i < 50; i++) {
+    await shop.addItem(guildId, { name: `Item${i}`, price: 1, description: "d", type: "custom" });
+  }
+  const result = await shop.addItem(guildId, { name: "Overflow", price: 1, description: "d", type: "custom" });
+  assertEquals(result.success, false);
+  assert(result.error?.includes("full"));
+});

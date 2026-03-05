@@ -153,3 +153,48 @@ Deno.test("pushMetadata: throws on API error", async () => {
     restoreFetch();
   }
 });
+
+// --- exchangeCode missing client secret ---
+
+Deno.test("exchangeCode: throws when DISCORD_CLIENT_SECRET missing", async () => {
+  const orig = Deno.env.get("DISCORD_CLIENT_SECRET");
+  Deno.env.delete("DISCORD_CLIENT_SECRET");
+  try {
+    await assertRejects(
+      () => exchangeCode("code", "https://example.com/callback"),
+      Error,
+      "DISCORD_CLIENT_SECRET",
+    );
+  } finally {
+    if (orig) Deno.env.set("DISCORD_CLIENT_SECRET", orig);
+  }
+});
+
+// --- pushMetadata success ---
+
+Deno.test("pushMetadata: success path does not throw", async () => {
+  mockFetch({ default: { status: 200, body: {} } });
+  try {
+    await pushMetadata("test_token", {
+      platformName: "Test",
+      platformUsername: "user",
+      metadata: { key: 1 },
+    });
+    // If we get here without throwing, the test passes
+    assertEquals(getCalls().length, 1);
+  } finally {
+    restoreFetch();
+  }
+});
+
+// --- fetchConnections empty array ---
+
+Deno.test("fetchConnections: empty array returns empty", async () => {
+  mockFetch({ default: { status: 200, body: [] } });
+  try {
+    const result = await fetchConnections("token");
+    assertEquals(result, []);
+  } finally {
+    restoreFetch();
+  }
+});

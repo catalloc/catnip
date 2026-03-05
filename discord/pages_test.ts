@@ -47,3 +47,24 @@ Deno.test("linkedRolesErrorPage: escapes XSS in message", async () => {
   assert(!html.includes("<img"));
   assert(html.includes("&lt;img"));
 });
+
+// --- Security headers ---
+
+Deno.test("htmlResponse: includes security headers", () => {
+  const res = htmlResponse("<p>test</p>");
+  assertEquals(res.headers.get("X-Frame-Options"), "DENY");
+  assertEquals(res.headers.get("X-Content-Type-Options"), "nosniff");
+  assert(res.headers.get("Content-Security-Policy")!.includes("frame-ancestors 'none'"));
+});
+
+// --- invitePage ---
+
+import { invitePage } from "./pages.ts";
+
+Deno.test("invitePage: returns valid HTML with invite link", async () => {
+  const res = invitePage("123456");
+  const html = await res.text();
+  assert(html.includes("123456"));
+  assert(html.includes("discord.com/oauth2/authorize"));
+  assert(html.includes("<!DOCTYPE html>"));
+});
