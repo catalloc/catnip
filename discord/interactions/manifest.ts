@@ -1,0 +1,75 @@
+/**
+ * discord/interactions/manifest.ts
+ *
+ * Static fallback manifest used on first deploy before KV is populated.
+ * After first deploy, hit ?discover=true to scan the project and store
+ * the manifest in KV. Subsequent cold starts read from KV instead.
+ *
+ * This file is only used when the KV "manifest" key is empty.
+ */
+
+// Commands
+export { default as about } from "./commands/about.ts";
+export { default as backup } from "./commands/backup.ts";
+export { default as coinFlip } from "./commands/coin-flip.ts";
+export { default as colorPicker } from "./commands/color-picker.ts";
+export { default as commands } from "./commands/commands.ts";
+export { default as counter } from "./commands/counter.ts";
+export { default as echo } from "./commands/echo.ts";
+export { default as facts } from "./commands/facts.ts";
+export { default as feedback } from "./commands/feedback.ts";
+export { default as giveaway } from "./commands/giveaway.ts";
+export { default as help } from "./commands/help.ts";
+export { default as livestream } from "./commands/livestream.ts";
+export { default as paste } from "./commands/paste.ts";
+export { default as pick } from "./commands/pick.ts";
+export { default as ping } from "./commands/ping.ts";
+export { default as poll } from "./commands/poll.ts";
+export { default as r } from "./commands/r.ts";
+export { default as reactRoles } from "./commands/react-roles.ts";
+export { default as remind } from "./commands/remind.ts";
+export { default as schedule } from "./commands/schedule.ts";
+export { default as server } from "./commands/server.ts";
+export { default as slowEcho } from "./commands/slow-echo.ts";
+export { default as stash } from "./commands/stash.ts";
+export { default as tag } from "./commands/tag.ts";
+export { default as template } from "./commands/template.ts";
+export { default as ticket } from "./commands/ticket.ts";
+export { default as userInfo } from "./commands/user-info.ts";
+export { default as scratchpost } from "./commands/scratchpost.ts";
+
+// Games Commands
+export { default as balance } from "./commands/balance.ts";
+export { default as profile } from "./commands/profile.ts";
+export { default as games } from "./commands/games.ts";
+export { default as gamesConfig } from "./commands/games-admin.ts";
+export { default as give } from "./commands/give.ts";
+export { default as leaderboard } from "./commands/leaderboard.ts";
+export { default as shop } from "./commands/shop.ts";
+
+// Components
+export { default as colorSelect } from "./components/color-select.ts";
+export { default as exampleButton } from "./components/example-button.ts";
+export { default as factsPage } from "./components/facts-page.ts";
+export { default as feedbackModal } from "./components/feedback-modal.ts";
+export { default as giveawayEnter } from "./components/giveaway-enter.ts";
+export { default as pollVote } from "./components/poll-vote.ts";
+export { default as reactRole } from "./components/react-role.ts";
+export { default as rollReveal } from "./components/roll-reveal.ts";
+export { default as ticketModal } from "./components/ticket-modal.ts";
+export { default as ticketJoin } from "./components/ticket-join.ts";
+export { default as ticketClose } from "./components/ticket-close.ts";
+export { default as templateModal } from "./components/template-modal.ts";
+export { default as ticketCloseModal } from "./components/ticket-close-modal.ts";
+export { default as blackjackAction } from "./components/blackjack-action.ts";
+export { default as crashAction } from "./components/crash-action.ts";
+export { default as minesAction } from "./components/mines-action.ts";
+export { default as hiloAction } from "./components/hilo-action.ts";
+export { default as pokerAction } from "./components/poker-action.ts";
+export { default as duelAction } from "./components/duel-action.ts";
+export { default as rpsAction } from "./components/rps-action.ts";
+export { default as rrouletteAction } from "./components/rroulette-action.ts";
+export { default as triviaAction } from "./components/trivia-action.ts";
+export { default as connect4Action } from "./components/connect4-action.ts";
+export { default as tttAction } from "./components/ttt-action.ts";
+export { default as scratchpostScratch } from "./components/scratchpost-scratch.ts";

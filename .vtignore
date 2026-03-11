@@ -1,0 +1,9 @@
+.git
+.vscode
+.cursorrules
+.claude
+.vt
+.DS_Store
+*:Zone.Identifier
+node_modules
+vendor
