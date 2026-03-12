@@ -1,18 +1,25 @@
 # Changelog
 
-## 1.2.0 — Per-Game Toggles & Daily Rewards
+## 1.0.2 — Webhook Log Muting, Command Rename & Daily Rewards
 
 ### Features
+- Webhook log muting — `/server logging mute <path>` suppresses routine (info/debug) webhook logs for noisy commands or cron jobs while still forwarding warnings and errors. Supports prefix matching (e.g. muting `cmd:games` also mutes `cmd:games:coinflip`). Manage with `mute`, `unmute`, and `list` subcommands.
+- `/server info` now shows muted log paths alongside admin roles and enabled commands
 - Per-game toggles — admins can enable/disable individual games via `/games-config toggle --game <name> --enabled <bool>` (all 20 games supported)
-- Daily reward command — `/daily` grants a random coin amount (default 50–150) with a 24-hour cooldown
+- Daily reward command — `/games daily` grants a random coin amount (default 50–150) with a 24-hour cooldown
 - Daily reward configuration — `/games-config daily` lets admins set `--enabled`, `--min`, `--max` reward range
 - `games-config info` now shows disabled games list and daily reward settings
 - Added `GameName` type and `ALL_GAME_NAMES` constant for type-safe game references
 
-### Testing
-- 13 new tests covering toggle, daily config, daily command, and per-game disable enforcement
+### Changes
+- Renamed `/r` to `/roll` for clarity
+- Moved `/daily` into `/games daily` subcommand — consolidates all game interactions under one command
+- Logger `muted` flag integrated into interaction handler (commands) and `runCron()` helper (cron jobs)
 
-## 1.1.0 — Extract Reusable Patterns
+### Testing
+- New tests for `log-config.ts`, server logging subcommands, toggle, daily config, daily command, and per-game disable enforcement
+
+## 1.0.1 — Extract Reusable Patterns
 
 ### Refactoring
 - Extract `ExpiringCache` class (`discord/helpers/cache.ts`) — replaces 6 identical cache implementations across paste, template, tag, stash, backup, and schedule commands

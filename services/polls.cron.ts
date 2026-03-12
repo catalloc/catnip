@@ -19,6 +19,7 @@ export default async function () {
 
   await runCron({
     name: "PollCron",
+    mutePath: "cron:polls",
     prefix: "poll:",
     maxDue: 100,
     async process(entry, logger) {

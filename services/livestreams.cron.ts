@@ -24,6 +24,7 @@ import {
 } from "../discord/services/stream-platforms.ts";
 import { discordBotFetch } from "../discord/discord-api.ts";
 import { createLogger, finalizeAllLoggers } from "../discord/webhook/logger.ts";
+import { logConfig, isPathMuted } from "../discord/persistence/log-config.ts";
 import { CONFIG } from "../discord/constants.ts";
 
 const logger = createLogger("LivestreamCron");
@@ -154,6 +155,12 @@ async function processTracker(
 }
 
 export default async function () {
+  // Check if this cron path is muted
+  try {
+    const mutedPaths = await logConfig.getMutedPaths();
+    logger.muted = isPathMuted("cron:livestreams", mutedPaths);
+  } catch { /* proceed unmuted */ }
+
   try {
     const entries = await kv.list("stream:", MAX_TRACKERS_PER_RUN);
     if (entries.length === 0) return;

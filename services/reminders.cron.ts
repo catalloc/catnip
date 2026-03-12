@@ -14,6 +14,7 @@ const CONCURRENCY = 5;
 export default async function () {
   await runCron({
     name: "ReminderCron",
+    mutePath: "cron:reminders",
     prefix: "reminder:",
     maxDue: 100,
     async process(entry, logger) {

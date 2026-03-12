@@ -17,6 +17,7 @@ import { CONFIG, isGuildAdmin } from "../constants.ts";
 import { UserFacingError } from "./errors.ts";
 import type { ComponentContext } from "./define-component.ts";
 import { kv } from "../persistence/kv.ts";
+import { logConfig, isPathMuted } from "../persistence/log-config.ts";
 import { remainingMs } from "../discord-api.ts";
 import { cryptoJitter } from "../helpers/crypto.ts";
 
@@ -226,6 +227,15 @@ async function handleSlashCommandInteraction(body: any): Promise<Response> {
 
   if (subcommand) {
     options.subcommand = subcommand;
+  }
+
+  // Check if this command path is muted (suppress routine webhook logs)
+  const cmdPath = subcommand ? `cmd:${commandName}:${subcommand}` : `cmd:${commandName}`;
+  try {
+    const mutedPaths = await logConfig.getMutedPaths();
+    logger.muted = isPathMuted(cmdPath, mutedPaths);
+  } catch {
+    logger.muted = false;
   }
 
   const logCtx = `[${ref}] [cmd:${commandName} guild:${guildId} user:${userId}]`;

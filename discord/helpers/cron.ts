@@ -7,9 +7,12 @@
 
 import { kv } from "../persistence/kv.ts";
 import { createLogger, finalizeAllLoggers, type DiscordLogger } from "../webhook/logger.ts";
+import { logConfig, isPathMuted } from "../persistence/log-config.ts";
 
 export interface CronOpts {
   name: string;
+  /** Path for mute checking, e.g. "cron:reminders". If omitted, muting is not checked. */
+  mutePath?: string;
   prefix: string;
   maxDue?: number;
   concurrency?: number;
@@ -21,6 +24,15 @@ export interface CronOpts {
  */
 export async function runCron(opts: CronOpts): Promise<void> {
   const logger = createLogger(opts.name);
+
+  // Check if this cron path is muted
+  if (opts.mutePath) {
+    try {
+      const mutedPaths = await logConfig.getMutedPaths();
+      logger.muted = isPathMuted(opts.mutePath, mutedPaths);
+    } catch { /* proceed unmuted */ }
+  }
+
   const start = Date.now();
   try {
     const entries = await kv.listDue(Date.now(), opts.prefix, opts.maxDue ?? 100);

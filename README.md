@@ -75,11 +75,13 @@ persistence layers — all running on Val Town's serverless Deno isolates.
 - **Stash** — Personal cross-server clipboard for text snippets
 - **Backup** — Guild data export/import for tags, templates, and counters
 - **Dice roller** — Standard TTRPG notation (`2d20+5`) with secret rolls,
-  announce, and reveal
+  announce, and reveal (`/roll`)
+- **Per-game toggles** — Admins can enable/disable individual casino games
+- **Daily coin rewards** — Configurable daily `/games daily` command with cooldown
 - **Linked roles** — Discord OAuth2 verification with pluggable verifiers
   (Steam, GitHub, Patreon, account age)
-- **Webhook logging** — Batched Discord webhook logger with log levels and
-  auto-flush
+- **Webhook logging** — Batched Discord webhook logger with log levels,
+  auto-flush, and per-path muting
 - **Webhook sending** — Message chunking, embed batching, rate-limit handling,
   fallback support
 - **KV persistence** — SQLite-backed key-value store with atomic operations,
@@ -228,7 +230,7 @@ Once the bot is in your server and global commands have propagated:
    permission
 2. **Enable guild commands**: `/server commands enable command:giveaway` —
    enables feature commands one at a time. Repeat for each command you want
-   (e.g. `remind`, `poll`, `tag`, `react-roles`, `schedule`, `r`, etc.)
+   (e.g. `remind`, `poll`, `tag`, `react-roles`, `schedule`, `roll`, etc.)
 3. **View config**: `/server info` — shows current admin roles and enabled
    commands
 
@@ -268,7 +270,9 @@ To send bot logs to a Discord channel:
    URL
 
 The bot will batch and send log entries (info, warn, error) to that channel.
-Useful for monitoring in production.
+Useful for monitoring in production. You can mute noisy paths (e.g. frequent
+commands or cron jobs) with `/server logging mute` — only warnings and errors
+will still appear.
 
 ### 12. Optional: Legal Pages
 
@@ -414,7 +418,13 @@ Per-guild bot configuration.
 - `commands disable <command>` — Disable a guild command, bulk overwrites
   remaining enabled commands (removes the disabled one from Discord)
 - `commands list` — Show status of all guild commands
-- `info` — Full guild config summary
+- `logging mute <path>` — Suppress routine (info/debug) webhook logs for a
+  command or cron path (e.g. `cmd:games`, `cron:reminders`). Warnings and
+  errors always get through. Supports prefix matching — muting `cmd:games`
+  also mutes `cmd:games:coinflip`.
+- `logging unmute <path>` — Re-enable webhook logs for a previously muted path
+- `logging list` — Show all currently muted log paths
+- `info` — Full guild config summary (now includes muted log paths)
 
 ### Guild Commands
 
@@ -505,7 +515,7 @@ Vote behavior: click to vote, click same to remove, click different to switch.
 Max 10,000 voters. Panel updates throttled to 5-second intervals. Auto-ended by
 `polls.cron.ts`.
 
-#### `/r <dice> [secret] [announce]`
+#### `/roll <dice> [secret] [announce]`
 
 Roll dice using TTRPG notation. Supports `XdN`, `XdN+M`, `XdN-M`. 1–20 dice,
 d2–d100. Shows individual rolls and total.
@@ -515,8 +525,8 @@ d2–d100. Shows individual rolls and total.
 - **announce** — When rolling secretly, posts a public notice
   ("🎲 @user rolled some dice...") so the table knows something happened.
 
-Examples: `/r dice:1d20`, `/r dice:4d6`, `/r dice:2d20+5`,
-`/r dice:1d20 secret:True announce:True`
+Examples: `/roll dice:1d20`, `/roll dice:4d6`, `/roll dice:2d20+5`,
+`/roll dice:1d20 secret:True announce:True`
 
 #### `/react-roles` (admin-only)
 
@@ -750,10 +760,12 @@ const all = await kv.list("user:");
 
 | Prefix                                   | Description                                |
 | ---------------------------------------- | ------------------------------------------ |
-| `cooldown:{command}:{userId}`            | Per-user command cooldown expiry           |
+| `cooldown:{command}:{userId}`            | Per-user command cooldown expiry            |
+| `cooldown:games:daily:{userId}`          | Daily reward 24h cooldown                   |
 | `counter:{guildId}`                      | Guild counter value                        |
 | `giveaway:{guildId}`                     | Active/ended giveaway state                |
 | `guild_config:{guildId}`                 | Admin roles, enabled commands              |
+| `logging:muted_paths`                    | Muted webhook log paths (global)           |
 | `manifest`                               | Command/component file manifest            |
 | `patreon:discord:{discordId}`            | Patreon patron record                      |
 | `poll:{guildId}`                         | Active/ended poll state                    |
@@ -927,6 +939,14 @@ log.debug("Verbose detail");
 `batchIntervalMs`. On flush failure, entries are restored to the buffer (capped
 at 100). `finalizeAllLoggers()` flushes all registered loggers before the
 isolate terminates.
+
+**Muting:** Each logger instance has a `muted` flag. When `muted = true`,
+info/debug entries are still emitted to console but suppressed from the webhook.
+Warnings and errors always get through. The interaction handler and cron helper
+set this flag automatically based on paths configured via
+`/server logging mute`. Path format: `cmd:<name>` or `cron:<name>` with prefix
+matching (muting `cmd:games` also mutes `cmd:games:coinflip`). Configuration is
+stored in KV at `logging:muted_paths` (max 100 paths).
 
 **Format:** `**[context]** - N log(s)` followed by `{emoji} HH:MM:SS message`
 
@@ -1250,7 +1270,7 @@ export default defineComponent({
 
 ## Testing
 
-Catnip has a comprehensive test suite — **57 test files** with **684 tests** and
+Catnip has a comprehensive test suite — **126 test files** with **1621 tests** and
 a **100% pass rate**. Tests run on Deno's built-in test runner with no external
 test dependencies.
 
@@ -1264,7 +1284,7 @@ deno test --allow-env --allow-net --no-check
 |---|---|---|---|
 | **Core infrastructure** | 6 | 61 | Config loading, API retry logic, crypto helpers, duration parsing, embed builder, timeouts |
 | **Interaction framework** | 7 | 55 | Handler dispatch, auto-discovery, command factory, component factory, error handling, patterns, registration |
-| **Commands** | 14 | 193 | backup, facts, giveaway, paste, poll, r, remind, schedule, server, stash, tag, template, ticket |
+| **Commands** | 14 | 193 | backup, facts, giveaway, paste, poll, roll, remind, schedule, server, stash, tag, template, ticket |
 | **Components** | 9 | 66 | giveaway-enter, poll-vote, react-role, roll-reveal, template-modal, ticket-close, ticket-close-modal, ticket-join, ticket-modal |
 | **Persistence** | 2 | 43 | KV store CRUD, atomic operations, optimistic concurrency, time-based queries, guild config |
 | **Linked roles** | 5 | 34 | OAuth2 flow, verifier factory, Patreon webhook, routes, CSRF state tokens |
@@ -1317,7 +1337,8 @@ All external dependencies are mocked so tests run offline and in isolation:
 │   ├── persistence/
 │   │   ├── blob.ts               # Blob storage (Val Town / Cloudflare R2)
 │   │   ├── guild-config.ts       # Per-guild config (admin roles, commands)
-│   │   └── kv.ts                 # Key-value store (Val Town SQLite)
+│   │   ├── kv.ts                 # Key-value store (Val Town SQLite)
+│   │   └── log-config.ts         # Webhook log muting config (KV-backed)
 │   ├── interactions/
 │   │   ├── auto-discover.ts      # File discovery, saves manifest to KV
 │   │   ├── define-command.ts     # defineCommand() factory
@@ -1344,7 +1365,7 @@ All external dependencies are mocked so tests run offline and in isolation:
 │   │   │   ├── pick.ts           # Random picker
 │   │   │   ├── ping.ts           # Health check
 │   │   │   ├── poll.ts           # Poll system
-│   │   │   ├── r.ts              # Dice roller
+│   │   │   ├── roll.ts            # Dice roller
 │   │   │   ├── react-roles.ts    # Self-assign role panels
 │   │   │   ├── remind.ts         # Personal reminders
 │   │   │   ├── schedule.ts       # Scheduled messages

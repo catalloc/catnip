@@ -122,7 +122,7 @@ Deno.test("server info: shows config summary for unconfigured guild", async () =
   const result = await serverCmd.execute(makeOpts("info"));
   assertEquals(result.success, true);
   assert(result.embed!.title === "Server Configuration");
-  assert(result.embed!.fields!.length === 2);
+  assert(result.embed!.fields!.length === 3);
 });
 
 Deno.test("server info: shows config with roles and commands", async () => {
@@ -204,6 +204,73 @@ Deno.test("server autocomplete: filters by query", async () => {
   const resp = await serverCmd.autocomplete!(body, {});
   const data = await resp.json();
   assertEquals(data.data.choices.length, 0);
+});
+
+// --- logging:mute ---
+
+Deno.test("server logging:mute: mutes a command path", async () => {
+  resetStore();
+  const result = await serverCmd.execute(makeOpts("logging:mute", { path: "cmd:games" }));
+  assertEquals(result.success, true);
+  assert(result.message!.includes("Muted"));
+});
+
+Deno.test("server logging:mute: rejects duplicate", async () => {
+  resetStore();
+  await serverCmd.execute(makeOpts("logging:mute", { path: "cmd:games" }));
+  const result = await serverCmd.execute(makeOpts("logging:mute", { path: "cmd:games" }));
+  assertEquals(result.success, false);
+  assert(result.error!.includes("already muted"));
+});
+
+Deno.test("server logging:mute: rejects invalid prefix", async () => {
+  resetStore();
+  const result = await serverCmd.execute(makeOpts("logging:mute", { path: "invalid:path" }));
+  assertEquals(result.success, false);
+  assert(result.error!.includes("cmd:") || result.error!.includes("cron:"));
+});
+
+Deno.test("server logging:mute: accepts cron path", async () => {
+  resetStore();
+  const result = await serverCmd.execute(makeOpts("logging:mute", { path: "cron:reminders" }));
+  assertEquals(result.success, true);
+  assert(result.message!.includes("Muted"));
+});
+
+// --- logging:unmute ---
+
+Deno.test("server logging:unmute: unmutes a path", async () => {
+  resetStore();
+  await serverCmd.execute(makeOpts("logging:mute", { path: "cmd:ping" }));
+  const result = await serverCmd.execute(makeOpts("logging:unmute", { path: "cmd:ping" }));
+  assertEquals(result.success, true);
+  assert(result.message!.includes("Unmuted"));
+});
+
+Deno.test("server logging:unmute: fails for non-muted path", async () => {
+  resetStore();
+  const result = await serverCmd.execute(makeOpts("logging:unmute", { path: "cmd:nope" }));
+  assertEquals(result.success, false);
+  assert(result.error!.includes("not muted"));
+});
+
+// --- logging:list ---
+
+Deno.test("server logging:list: shows message when empty", async () => {
+  resetStore();
+  const result = await serverCmd.execute(makeOpts("logging:list"));
+  assertEquals(result.success, true);
+  assert(result.message!.includes("No paths"));
+});
+
+Deno.test("server logging:list: shows muted paths", async () => {
+  resetStore();
+  await serverCmd.execute(makeOpts("logging:mute", { path: "cmd:games" }));
+  await serverCmd.execute(makeOpts("logging:mute", { path: "cron:reminders" }));
+  const result = await serverCmd.execute(makeOpts("logging:list"));
+  assertEquals(result.success, true);
+  assert(result.embed!.description!.includes("cmd:games"));
+  assert(result.embed!.description!.includes("cron:reminders"));
 });
 
 // --- command metadata ---

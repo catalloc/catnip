@@ -15,6 +15,7 @@ const CONCURRENCY = 5;
 export default async function () {
   await runCron({
     name: "ScheduledMsgCron",
+    mutePath: "cron:scheduled-messages",
     prefix: KV_PREFIX,
     maxDue: 100,
     async process(entry, logger) {

@@ -19,6 +19,7 @@ export default async function () {
 
   await runCron({
     name: "TicketCron",
+    mutePath: "cron:tickets",
     prefix: KV_PREFIX,
     maxDue: 50,
     async process(entry, logger) {

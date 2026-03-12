@@ -19,6 +19,7 @@ export default async function () {
 
   await runCron({
     name: "GiveawayCron",
+    mutePath: "cron:giveaways",
     prefix: "giveaway:",
     maxDue: 100,
     async process(entry, logger) {

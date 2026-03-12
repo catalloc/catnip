@@ -8,6 +8,9 @@
  *   /server commands enable <command>  — Enable a command for this guild
  *   /server commands disable <command> — Disable a command for this guild
  *   /server commands list         — Show enabled/available commands
+ *   /server logging mute <path>   — Mute routine webhook logs for a path
+ *   /server logging unmute <path> — Unmute webhook logs for a path
+ *   /server logging list          — Show muted log paths
  *   /server info                  — Show guild config summary
  *
  * File: discord/interactions/commands/server.ts
@@ -16,10 +19,20 @@
 import { defineCommand, OptionTypes } from "../define-command.ts";
 import { EmbedColors } from "../../constants.ts";
 import { guildConfig } from "../../persistence/guild-config.ts";
+import { logConfig } from "../../persistence/log-config.ts";
 import { createAutocompleteResponse } from "../patterns.ts";
 import { createLogger } from "../../webhook/logger.ts";
 
 const logger = createLogger("Server");
+
+const KNOWN_CRON_PATHS = [
+  "cron:reminders",
+  "cron:giveaways",
+  "cron:polls",
+  "cron:tickets",
+  "cron:livestreams",
+  "cron:scheduled-messages",
+];
 
 // Lazy imports to avoid circular deps with registry
 async function getRegistration() {
@@ -123,6 +136,50 @@ export default defineCommand({
       ],
     },
     {
+      name: "logging",
+      description: "Manage webhook console log muting",
+      type: OptionTypes.SUB_COMMAND_GROUP,
+      required: false,
+      options: [
+        {
+          name: "mute",
+          description: "Mute routine logs for a command or cron path",
+          type: OptionTypes.SUB_COMMAND,
+          required: false,
+          options: [
+            {
+              name: "path",
+              description: "Path to mute (e.g. cmd:games, cron:reminders)",
+              type: OptionTypes.STRING,
+              required: true,
+              autocomplete: true,
+            },
+          ],
+        },
+        {
+          name: "unmute",
+          description: "Unmute logs for a command or cron path",
+          type: OptionTypes.SUB_COMMAND,
+          required: false,
+          options: [
+            {
+              name: "path",
+              description: "Path to unmute",
+              type: OptionTypes.STRING,
+              required: true,
+              autocomplete: true,
+            },
+          ],
+        },
+        {
+          name: "list",
+          description: "Show all muted log paths",
+          type: OptionTypes.SUB_COMMAND,
+          required: false,
+        },
+      ],
+    },
+    {
       name: "info",
       description: "Show server configuration summary",
       type: OptionTypes.SUB_COMMAND,
@@ -138,7 +195,7 @@ export default defineCommand({
     const group = body.data.options?.find(
       (o: any) => o.type === OptionTypes.SUB_COMMAND_GROUP,
     );
-    if (!group || group.name !== "commands") return createAutocompleteResponse([]);
+    if (!group) return createAutocompleteResponse([]);
 
     const sub = group.options?.find(
       (o: any) => o.type === OptionTypes.SUB_COMMAND,
@@ -146,32 +203,65 @@ export default defineCommand({
     if (!sub) return createAutocompleteResponse([]);
 
     const focused = sub.options?.find((o: any) => o.focused);
-    if (!focused || focused.name !== "command") return createAutocompleteResponse([]);
+    if (!focused) return createAutocompleteResponse([]);
 
     const query = ((focused.value as string) || "").toLowerCase();
-    const guildId = body.guild_id as string;
-    const allGuildCommands = await getGuildRegistrableNames();
-    const enabledCommands = await guildConfig.getEnabledCommands(guildId);
 
-    if (sub.name === "enable") {
-      // Show available commands, indicate which are already enabled
-      const choices = allGuildCommands
-        .filter((name) => name.toLowerCase().includes(query))
-        .map((name) => ({
-          name: enabledCommands.includes(name) ? `${name} (already enabled)` : name,
-          value: name,
-        }))
-        .slice(0, 25);
-      return createAutocompleteResponse(choices);
+    // --- commands group ---
+    if (group.name === "commands" && focused.name === "command") {
+      const guildId = body.guild_id as string;
+      const allGuildCommands = await getGuildRegistrableNames();
+      const enabledCommands = await guildConfig.getEnabledCommands(guildId);
+
+      if (sub.name === "enable") {
+        const choices = allGuildCommands
+          .filter((name) => name.toLowerCase().includes(query))
+          .map((name) => ({
+            name: enabledCommands.includes(name) ? `${name} (already enabled)` : name,
+            value: name,
+          }))
+          .slice(0, 25);
+        return createAutocompleteResponse(choices);
+      }
+
+      if (sub.name === "disable") {
+        const choices = enabledCommands
+          .filter((name) => name.toLowerCase().includes(query))
+          .map((name) => ({ name, value: name }))
+          .slice(0, 25);
+        return createAutocompleteResponse(choices);
+      }
     }
 
-    if (sub.name === "disable") {
-      // Only show enabled commands
-      const choices = enabledCommands
-        .filter((name) => name.toLowerCase().includes(query))
-        .map((name) => ({ name, value: name }))
-        .slice(0, 25);
-      return createAutocompleteResponse(choices);
+    // --- logging group ---
+    if (group.name === "logging" && focused.name === "path") {
+      if (sub.name === "mute") {
+        // Suggest all known command + cron paths, mark already-muted ones
+        const { getAllCommands } = await import("../registry.ts");
+        const cmdPaths = getAllCommands().map((c) => `cmd:${c.name}`);
+        const allPaths = [...cmdPaths, ...KNOWN_CRON_PATHS];
+        const mutedPaths = await logConfig.getMutedPaths();
+        const mutedSet = new Set(mutedPaths);
+
+        const choices = allPaths
+          .filter((p) => p.includes(query))
+          .map((p) => ({
+            name: mutedSet.has(p) ? `${p} (already muted)` : p,
+            value: p,
+          }))
+          .slice(0, 25);
+        return createAutocompleteResponse(choices);
+      }
+
+      if (sub.name === "unmute") {
+        // Only show currently muted paths
+        const mutedPaths = await logConfig.getMutedPaths();
+        const choices = mutedPaths
+          .filter((p) => p.includes(query))
+          .map((p) => ({ name: p, value: p }))
+          .slice(0, 25);
+        return createAutocompleteResponse(choices);
+      }
     }
 
     return createAutocompleteResponse([]);
@@ -289,11 +379,51 @@ export default defineCommand({
       };
     }
 
+    // --- logging:mute ---
+    if (sub === "logging:mute") {
+      const path = (options.path as string).toLowerCase().trim();
+      if (!path.startsWith("cmd:") && !path.startsWith("cron:")) {
+        return { success: false, error: "Path must start with `cmd:` or `cron:`." };
+      }
+      const added = await logConfig.addMutedPath(path);
+      return added
+        ? { success: true, message: `Muted \`${path}\` — routine logs will be suppressed from webhook console.` }
+        : { success: false, error: `\`${path}\` is already muted.` };
+    }
+
+    // --- logging:unmute ---
+    if (sub === "logging:unmute") {
+      const path = (options.path as string).toLowerCase().trim();
+      const removed = await logConfig.removeMutedPath(path);
+      return removed
+        ? { success: true, message: `Unmuted \`${path}\` — logs will appear in webhook console again.` }
+        : { success: false, error: `\`${path}\` is not muted.` };
+    }
+
+    // --- logging:list ---
+    if (sub === "logging:list") {
+      const mutedPaths = await logConfig.getMutedPaths();
+      if (mutedPaths.length === 0) {
+        return { success: true, message: "No paths are muted. Use `/server logging mute` to quiet a path." };
+      }
+      return {
+        success: true,
+        message: "",
+        embed: {
+          title: "Muted Log Paths",
+          description: mutedPaths.map((p) => `\`${p}\``).join("\n"),
+          color: EmbedColors.INFO,
+          footer: { text: `${mutedPaths.length} path${mutedPaths.length !== 1 ? "s" : ""} muted — warnings and errors still logged` },
+        },
+      };
+    }
+
     // --- info ---
     if (sub === "info") {
       const config = await guildConfig.get(guildId);
       const adminRoles = config?.adminRoleIds ?? [];
       const enabledCommands = config?.enabledCommands ?? [];
+      const mutedPaths = await logConfig.getMutedPaths();
 
       const fields = [
         {
@@ -309,6 +439,13 @@ export default defineCommand({
             ? enabledCommands.map((n) => `\`${n}\``).join(", ")
             : "None enabled",
           inline: true,
+        },
+        {
+          name: "Muted Log Paths",
+          value: mutedPaths.length > 0
+            ? mutedPaths.map((p) => `\`${p}\``).join(", ")
+            : "None",
+          inline: false,
         },
       ];
 

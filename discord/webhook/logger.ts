@@ -54,6 +54,12 @@ export class DiscordLogger {
   private flushTimer: number | null = null;
   private isFlushing = false;
 
+  /**
+   * When true, routine logs (info/debug) are suppressed from the webhook
+   * but still emitted to console. Warnings and errors always get through.
+   */
+  public muted = false;
+
   private static readonly DISCORD_WEBHOOK_RE = /^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//;
 
   constructor(config: Partial<LoggerConfig> & { context: string }) {
@@ -96,6 +102,15 @@ export class DiscordLogger {
       return;
     }
 
+    if (this.config.fallbackToConsole) {
+      console.log(`[${level.toUpperCase()}] [${this.config.context}] ${message}`);
+    }
+
+    // When muted, only send warn/error to webhook — routine logs stay console-only
+    if (this.muted && LOG_LEVEL_PRIORITY[level] < LOG_LEVEL_PRIORITY["warn"]) {
+      return;
+    }
+
     const entry: LogEntry = {
       level,
       message: sanitize(message),
@@ -111,10 +126,6 @@ export class DiscordLogger {
       this.flush();
     } else {
       this.scheduleFlush();
-    }
-
-    if (this.config.fallbackToConsole) {
-      console.log(`[${level.toUpperCase()}] [${this.config.context}] ${message}`);
     }
   }
 
