@@ -1,7 +1,7 @@
 /**
  * Dice Roll Command - Roll dice using standard TTRPG notation
  *
- * File: discord/interactions/commands/r.ts
+ * File: discord/interactions/commands/roll.ts
  */
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
@@ -14,7 +14,7 @@ const MAX_SIDES = 100;
 const MIN_SIDES = 2;
 
 export default defineCommand({
-  name: "r",
+  name: "roll",
   description: "Roll dice (e.g. 2d20+5, 4d6, 1d100-2)",
 
   options: [

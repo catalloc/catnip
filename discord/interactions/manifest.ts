@@ -25,7 +25,7 @@ export { default as paste } from "./commands/paste.ts";
 export { default as pick } from "./commands/pick.ts";
 export { default as ping } from "./commands/ping.ts";
 export { default as poll } from "./commands/poll.ts";
-export { default as r } from "./commands/r.ts";
+export { default as roll } from "./commands/roll.ts";
 export { default as reactRoles } from "./commands/react-roles.ts";
 export { default as remind } from "./commands/remind.ts";
 export { default as schedule } from "./commands/schedule.ts";

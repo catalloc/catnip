@@ -1,7 +1,7 @@
 import "../../../test/_mocks/env.ts";
 import { assertEquals, assert, assertStringIncludes } from "../../../test/assert.ts";
 import { mockFetch, getCalls, restoreFetch } from "../../../test/_mocks/fetch.ts";
-import r from "./r.ts";
+import roll from "./roll.ts";
 
 function makeOptions(dice: string, secret?: boolean, announce?: boolean) {
   const opts: Record<string, any> = { dice, channelId: "ch1" };
@@ -11,7 +11,7 @@ function makeOptions(dice: string, secret?: boolean, announce?: boolean) {
 }
 
 function exec(dice: string, secret?: boolean, announce?: boolean) {
-  return r.execute({
+  return roll.execute({
     guildId: "g1",
     userId: "u1",
     options: makeOptions(dice, secret, announce),
@@ -21,29 +21,29 @@ function exec(dice: string, secret?: boolean, announce?: boolean) {
 
 // --- metadata ---
 
-Deno.test("r: command metadata is correct", () => {
-  assertEquals(r.name, "r");
-  assertEquals(r.deferred, false);
-  assertEquals(r.ephemeral, false);
-  assertEquals(r.options!.length, 3);
-  assertEquals(r.options![2].name, "announce");
+Deno.test("roll: command metadata is correct", () => {
+  assertEquals(roll.name, "roll");
+  assertEquals(roll.deferred, false);
+  assertEquals(roll.ephemeral, false);
+  assertEquals(roll.options!.length, 3);
+  assertEquals(roll.options![2].name, "announce");
 });
 
 // --- validation ---
 
-Deno.test("r: invalid notation returns error", async () => {
+Deno.test("roll: invalid notation returns error", async () => {
   const result = await exec("banana");
   assertEquals(result.success, false);
   assertStringIncludes(result.error!, "Invalid dice notation");
 });
 
-Deno.test("r: too many dice returns error", async () => {
+Deno.test("roll: too many dice returns error", async () => {
   const result = await exec("21d6");
   assertEquals(result.success, false);
   assertStringIncludes(result.error!, "Dice count");
 });
 
-Deno.test("r: sides out of range returns error", async () => {
+Deno.test("roll: sides out of range returns error", async () => {
   const result = await exec("1d1");
   assertEquals(result.success, false);
   assertStringIncludes(result.error!, "Die size");
@@ -51,7 +51,7 @@ Deno.test("r: sides out of range returns error", async () => {
 
 // --- public rolls ---
 
-Deno.test("r: public roll returns ephemeral false and no components", async () => {
+Deno.test("roll: public roll returns ephemeral false and no components", async () => {
   const result = await exec("1d20");
   assertEquals(result.success, true);
   assertEquals(result.ephemeral, false);
@@ -60,7 +60,7 @@ Deno.test("r: public roll returns ephemeral false and no components", async () =
   assert(!result.message!.includes("Secret Roll"));
 });
 
-Deno.test("r: public roll with modifier shows total breakdown", async () => {
+Deno.test("roll: public roll with modifier shows total breakdown", async () => {
   const result = await exec("2d6+3");
   assertEquals(result.success, true);
   assertStringIncludes(result.message!, "**2d6+3**");
@@ -70,7 +70,7 @@ Deno.test("r: public roll with modifier shows total breakdown", async () => {
 
 // --- secret rolls ---
 
-Deno.test("r: secret roll is ephemeral with secret prefix", async () => {
+Deno.test("roll: secret roll is ephemeral with secret prefix", async () => {
   const result = await exec("1d20", true);
   assertEquals(result.success, true);
   assertEquals(result.ephemeral, true);
@@ -78,7 +78,7 @@ Deno.test("r: secret roll is ephemeral with secret prefix", async () => {
   assertStringIncludes(result.message!, "**1d20**");
 });
 
-Deno.test("r: secret roll includes Reveal button", async () => {
+Deno.test("roll: secret roll includes Reveal button", async () => {
   const result = await exec("1d20", true);
   assert(result.components !== undefined);
   assertEquals(result.components!.length, 1);
@@ -93,7 +93,7 @@ Deno.test("r: secret roll includes Reveal button", async () => {
 
 // --- secret + announce ---
 
-Deno.test("r: secret + announce sends public channel message", async () => {
+Deno.test("roll: secret + announce sends public channel message", async () => {
   mockFetch({ default: { status: 200, body: {} } });
   try {
     const result = await exec("1d20", true, true);
@@ -113,7 +113,7 @@ Deno.test("r: secret + announce sends public channel message", async () => {
   }
 });
 
-Deno.test("r: secret without announce does not send channel message", async () => {
+Deno.test("roll: secret without announce does not send channel message", async () => {
   mockFetch({ default: { status: 200, body: {} } });
   try {
     await exec("1d20", true, false);
@@ -128,7 +128,7 @@ Deno.test("r: secret without announce does not send channel message", async () =
 
 // --- announce without secret is a no-op ---
 
-Deno.test("r: announce without secret has no effect", async () => {
+Deno.test("roll: announce without secret has no effect", async () => {
   mockFetch({ default: { status: 200, body: {} } });
   try {
     const result = await exec("1d20", false, true);
