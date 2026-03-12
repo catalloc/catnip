@@ -21,6 +21,10 @@ function createDefault(guildId: string): GamesGuildConfig {
     casinoMaxBet: 10000,
     casinoMinBet: 1,
     startingBalance: 0,
+    disabledGames: [],
+    dailyEnabled: true,
+    dailyMin: 50,
+    dailyMax: 150,
     createdAt: now,
     updatedAt: now,
   };

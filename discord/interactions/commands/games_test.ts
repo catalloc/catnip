@@ -179,3 +179,24 @@ Deno.test("games: casino disabled returns error mentioning closed", async () => 
   assertEquals(result.success, false);
   assert(result.error?.includes("closed"));
 });
+
+Deno.test("games: specific game disabled returns error", async () => {
+  resetStore();
+  await accounts.creditBalance(guildId, userId, 1000);
+  await gamesConfig.update(guildId, { disabledGames: ["slots"] });
+  const result = await command.execute({
+    guildId, userId, options: { subcommand: "slots", bet: 10 }, config: {},
+  } as any);
+  assertEquals(result.success, false);
+  assert(result.error?.includes("disabled"));
+});
+
+Deno.test("games: non-disabled game still works", async () => {
+  resetStore();
+  await accounts.creditBalance(guildId, userId, 1000);
+  await gamesConfig.update(guildId, { disabledGames: ["slots"] });
+  const result = await command.execute({
+    guildId, userId, options: { subcommand: "coinflip", bet: 10, call: "heads" }, config: {},
+  } as any);
+  assertEquals(result.success, true);
+});

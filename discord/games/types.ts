@@ -73,6 +73,21 @@ export interface BlackjackSession {
 
 // ── Guild Games Config ──────────────────────────────────
 
+export type GameName =
+  | "coinflip" | "dice" | "slots" | "roulette" | "blackjack"
+  | "crash" | "mines" | "limbo" | "plinko" | "keno"
+  | "hilo" | "poker" | "war" | "horserace"
+  | "duel" | "rps" | "russianroulette" | "trivia"
+  | "connect4" | "tictactoe";
+
+export const ALL_GAME_NAMES: GameName[] = [
+  "coinflip", "dice", "slots", "roulette", "blackjack",
+  "crash", "mines", "limbo", "plinko", "keno",
+  "hilo", "poker", "war", "horserace",
+  "duel", "rps", "russianroulette", "trivia",
+  "connect4", "tictactoe",
+];
+
 export interface GamesGuildConfig {
   guildId: string;
   currencyName: string;
@@ -81,6 +96,10 @@ export interface GamesGuildConfig {
   casinoMaxBet: number;
   casinoMinBet: number;
   startingBalance: number;
+  disabledGames: string[];
+  dailyEnabled: boolean;
+  dailyMin: number;
+  dailyMax: number;
   createdAt: number;
   updatedAt: number;
 }

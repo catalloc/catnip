@@ -6,6 +6,7 @@
 
 import { defineCommand, OptionTypes } from "../define-command.ts";
 import { gamesConfig } from "../../games/games-config.ts";
+import { ALL_GAME_NAMES } from "../../games/types.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors } from "../../constants.ts";
 
@@ -45,6 +46,30 @@ export default defineCommand({
       ],
     },
     {
+      name: "toggle",
+      description: "Enable or disable a specific game",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        {
+          name: "game", description: "Game to toggle", type: OptionTypes.STRING, required: true,
+          choices: ALL_GAME_NAMES.map((g) => ({ name: g, value: g })),
+        },
+        { name: "enabled", description: "Enable or disable this game", type: OptionTypes.BOOLEAN, required: true },
+      ],
+    },
+    {
+      name: "daily",
+      description: "Configure daily reward settings",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [
+        { name: "enabled", description: "Enable or disable the daily reward", type: OptionTypes.BOOLEAN, required: false },
+        { name: "min", description: "Minimum daily reward", type: OptionTypes.INTEGER, required: false },
+        { name: "max", description: "Maximum daily reward", type: OptionTypes.INTEGER, required: false },
+      ],
+    },
+    {
       name: "reset",
       description: "Reset all games settings to defaults",
       type: OptionTypes.SUB_COMMAND,
@@ -62,12 +87,15 @@ export default defineCommand({
 
     if (sub === "info") {
       const config = await gamesConfig.get(guildId);
+      const disabled = config.disabledGames ?? [];
       const e = embed()
         .title(`${config.currencyEmoji} Games Settings`)
         .color(EmbedColors.INFO)
         .field("Currency", `${config.currencyName} ${config.currencyEmoji}`, true)
         .field("Starting Balance", `${config.startingBalance.toLocaleString()}`, true)
         .field("Casino", config.casinoEnabled ? `Enabled (${config.casinoMinBet}-${config.casinoMaxBet.toLocaleString()})` : "Disabled", true)
+        .field("Daily Reward", config.dailyEnabled !== false ? `${config.dailyMin ?? 50}-${config.dailyMax ?? 150}` : "Disabled", true)
+        .field("Disabled Games", disabled.length > 0 ? disabled.join(", ") : "None", false)
         .build();
 
       return { success: true, embed: e };
@@ -130,11 +158,62 @@ export default defineCommand({
       return { success: true, message: `Casino settings updated: ${Object.keys(changes).join(", ")}.` };
     }
 
+    if (sub === "toggle") {
+      const game = options?.game as string;
+      const enabled = options?.enabled as boolean;
+
+      if (!ALL_GAME_NAMES.includes(game as any)) {
+        return { success: false, error: `Unknown game: ${game}.` };
+      }
+
+      const config = await gamesConfig.get(guildId);
+      const disabled = new Set(config.disabledGames ?? []);
+
+      if (enabled) {
+        disabled.delete(game);
+      } else {
+        disabled.add(game);
+      }
+
+      await gamesConfig.update(guildId, { disabledGames: [...disabled] });
+      return { success: true, message: `**${game}** is now ${enabled ? "enabled" : "disabled"}.` };
+    }
+
+    if (sub === "daily") {
+      const changes: Record<string, any> = {};
+      if (options?.enabled != null) changes.dailyEnabled = options.enabled;
+      if (options?.min != null) {
+        if (options.min < 0) return { success: false, error: "Minimum reward cannot be negative." };
+        changes.dailyMin = options.min;
+      }
+      if (options?.max != null) {
+        if (options.max < 1) return { success: false, error: "Maximum reward must be at least 1." };
+        changes.dailyMax = options.max;
+      }
+
+      if (Object.keys(changes).length === 0) {
+        return { success: false, error: "Provide at least one setting to change." };
+      }
+
+      // Validate min <= max relationship
+      if (changes.dailyMin != null || changes.dailyMax != null) {
+        const current = await gamesConfig.get(guildId);
+        const effectiveMin = changes.dailyMin ?? current.dailyMin ?? 50;
+        const effectiveMax = changes.dailyMax ?? current.dailyMax ?? 150;
+        if (effectiveMin > effectiveMax) {
+          return { success: false, error: `Minimum reward (${effectiveMin}) cannot exceed maximum reward (${effectiveMax}).` };
+        }
+      }
+
+      await gamesConfig.update(guildId, changes);
+      return { success: true, message: `Daily reward settings updated: ${Object.keys(changes).join(", ")}.` };
+    }
+
     if (sub === "reset") {
       await gamesConfig.reset(guildId);
       return { success: true, message: "All games settings have been reset to defaults." };
     }
 
-    return { success: false, error: "Please use a subcommand: info, setup, casino, or reset." };
+    return { success: false, error: "Please use a subcommand: info, setup, casino, toggle, daily, or reset." };
   },
 });

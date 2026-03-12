@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0 — Per-Game Toggles & Daily Rewards
+
+### Features
+- Per-game toggles — admins can enable/disable individual games via `/games-config toggle --game <name> --enabled <bool>` (all 20 games supported)
+- Daily reward command — `/daily` grants a random coin amount (default 50–150) with a 24-hour cooldown
+- Daily reward configuration — `/games-config daily` lets admins set `--enabled`, `--min`, `--max` reward range
+- `games-config info` now shows disabled games list and daily reward settings
+- Added `GameName` type and `ALL_GAME_NAMES` constant for type-safe game references
+
+### Testing
+- 13 new tests covering toggle, daily config, daily command, and per-game disable enforcement
+
 ## 1.1.0 — Extract Reusable Patterns
 
 ### Refactoring

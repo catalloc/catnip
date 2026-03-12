@@ -316,6 +316,10 @@ export default defineCommand({
       return { success: false, error: "The casino is closed in this server." };
     }
 
+    if (sub && (config.disabledGames ?? []).includes(sub)) {
+      return { success: false, error: `**${sub}** is disabled in this server.` };
+    }
+
     // PvP games handle debit/locking separately
     const PVP_GAMES = new Set(["duel", "rps", "connect4", "tictactoe", "russianroulette"]);
 
