@@ -35,6 +35,7 @@ import { tictactoe } from "../../games/casino/tictactoe.ts";
 import { xp, XP_AWARDS } from "../../games/xp.ts";
 import { embed } from "../../helpers/embed-builder.ts";
 import { EmbedColors } from "../../constants.ts";
+import { kv } from "../../persistence/kv.ts";
 import { UserFacingError } from "../errors.ts";
 
 // ── Helpers ──────────────────────────────────────────────
@@ -302,6 +303,15 @@ export default defineCommand({
         { name: "bet", description: "Amount to wager", type: OptionTypes.INTEGER, required: true },
       ],
     },
+
+    // ── Daily reward ──
+    {
+      name: "daily",
+      description: "Claim your daily coin reward",
+      type: OptionTypes.SUB_COMMAND,
+      required: false,
+      options: [],
+    },
   ],
 
   registration: { type: "guild" },
@@ -311,6 +321,55 @@ export default defineCommand({
   async execute({ guildId, userId, options }) {
     const sub = options?.subcommand as string | undefined;
     const config = await gamesConfig.get(guildId);
+
+    // ── Daily reward (no bet, own enable flag, own cooldown) ──
+    if (sub === "daily") {
+      if (config.dailyEnabled === false) {
+        return { success: false, error: "Daily rewards are disabled in this server." };
+      }
+
+      // Manual 24h cooldown (can't use command-level cooldown for a single subcommand)
+      const DAILY_COOLDOWN = 86400;
+      const cooldownKey = `cooldown:games:daily:${userId}`;
+      let onCooldown = false;
+      let remaining = 0;
+      try {
+        await kv.update<number | null>(cooldownKey, (expiry) => {
+          const now = Date.now();
+          if (expiry !== null && now < expiry) {
+            onCooldown = true;
+            remaining = Math.ceil((expiry - now) / 1000);
+            return expiry;
+          }
+          return now + DAILY_COOLDOWN * 1000;
+        });
+      } catch {
+        // CAS exhaustion — allow through rather than block
+      }
+      if (onCooldown) {
+        const hours = Math.floor(remaining / 3600);
+        const minutes = Math.floor((remaining % 3600) / 60);
+        const timeStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+        return { success: false, error: `You already claimed your daily reward. Come back in **${timeStr}**.` };
+      }
+
+      const min = config.dailyMin ?? 50;
+      const max = config.dailyMax ?? 150;
+      const reward = Math.floor(Math.random() * (max - min + 1)) + min;
+      const account = await accounts.creditBalance(guildId, userId, reward);
+
+      const e = embed()
+        .title(`${config.currencyEmoji} Daily Reward`)
+        .color(EmbedColors.SUCCESS)
+        .description(
+          `You received **${reward.toLocaleString()} ${config.currencyName}** ${config.currencyEmoji}!\n\n` +
+          `Balance: **${account.balance.toLocaleString()} ${config.currencyName}**`,
+        )
+        .footer("Come back tomorrow for another reward!")
+        .build();
+
+      return { success: true, embed: e, ephemeral: false };
+    }
 
     if (!config.casinoEnabled) {
       return { success: false, error: "The casino is closed in this server." };

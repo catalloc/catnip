@@ -3,7 +3,7 @@ import { assertEquals, assert } from "../../../test/assert.ts";
 import { sqlite } from "../../../test/_mocks/sqlite.ts";
 import { accounts } from "../../games/accounts.ts";
 import { gamesConfig, _internals as gamesConfigInternals } from "../../games/games-config.ts";
-import command from "./daily.ts";
+import command from "./games.ts";
 
 function resetStore() {
   (sqlite as any)._reset();
@@ -13,11 +13,11 @@ function resetStore() {
 const guildId = "g1";
 const userId = "u1";
 
-Deno.test("daily: grants coins within configured range", async () => {
+Deno.test("games daily: grants coins within configured range", async () => {
   resetStore();
   await gamesConfig.update(guildId, { dailyMin: 100, dailyMax: 100 });
   const result = await command.execute({
-    guildId, userId, options: {}, config: {},
+    guildId, userId, options: { subcommand: "daily" }, config: {},
   } as any);
   assertEquals(result.success, true);
   assert(result.embed);
@@ -26,10 +26,10 @@ Deno.test("daily: grants coins within configured range", async () => {
   assertEquals(account?.balance, 100);
 });
 
-Deno.test("daily: uses default range when not configured", async () => {
+Deno.test("games daily: uses default range when not configured", async () => {
   resetStore();
   const result = await command.execute({
-    guildId, userId, options: {}, config: {},
+    guildId, userId, options: { subcommand: "daily" }, config: {},
   } as any);
   assertEquals(result.success, true);
   assert(result.embed);
@@ -37,16 +37,12 @@ Deno.test("daily: uses default range when not configured", async () => {
   assert(account!.balance >= 50 && account!.balance <= 150);
 });
 
-Deno.test("daily: disabled returns error", async () => {
+Deno.test("games daily: disabled returns error", async () => {
   resetStore();
   await gamesConfig.update(guildId, { dailyEnabled: false });
   const result = await command.execute({
-    guildId, userId, options: {}, config: {},
+    guildId, userId, options: { subcommand: "daily" }, config: {},
   } as any);
   assertEquals(result.success, false);
   assert(result.error?.includes("disabled"));
-});
-
-Deno.test("daily: has 24h cooldown configured", () => {
-  assertEquals(command.cooldown, 86400);
 });

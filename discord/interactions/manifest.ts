@@ -46,7 +46,6 @@ export { default as gamesConfig } from "./commands/games-admin.ts";
 export { default as give } from "./commands/give.ts";
 export { default as leaderboard } from "./commands/leaderboard.ts";
 export { default as shop } from "./commands/shop.ts";
-export { default as daily } from "./commands/daily.ts";
 
 // Components
 export { default as colorSelect } from "./components/color-select.ts";
