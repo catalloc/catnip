@@ -11,6 +11,7 @@
  *   /linked-roles/callback  — Linked Roles OAuth2 callback
  *
  * GET params (root):
+ *   ?bootstrap=true          — create KV table and indexes (idempotent)
  *   ?discover=true           — scan project files, save manifest to KV
  *   ?register=true           — bulk-register all commands with Discord
  *   ?register-metadata=true  — push linked roles metadata schema to Discord
@@ -31,6 +32,7 @@ import { handleLinkedRolesRedirect, handleLinkedRolesCallback } from "../discord
 import { registerMetadataSchema } from "../discord/linked-roles/register-metadata.ts";
 import { handlePatreonWebhook } from "../discord/linked-roles/patreon-webhook.ts";
 import { timingSafeEqual } from "../discord/helpers/crypto.ts";
+import { bootstrapKvTable } from "../discord/persistence/kv.ts";
 import { createLogger, finalizeAllLoggers } from "../discord/webhook/logger.ts";
 import "../discord/linked-roles/verifiers/always-verified.ts"; // side-effect: registers verifier
 
@@ -104,6 +106,18 @@ export default async function(req: Request): Promise<Response> {
         } catch (err) {
           logger.error("Discovery failed:", err);
           return Response.json({ error: "Discovery failed" }, { status: 500 });
+        }
+      }
+
+      if (url.searchParams.get("bootstrap") === "true") {
+        const authError = await checkPassword(req);
+        if (authError) return authError;
+        try {
+          await bootstrapKvTable();
+          return Response.json({ ok: true, message: "KV table and indexes created" });
+        } catch (err) {
+          logger.error("Bootstrap failed:", err);
+          return Response.json({ error: "Bootstrap failed" }, { status: 500 });
         }
       }
 

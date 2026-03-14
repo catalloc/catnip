@@ -15,17 +15,17 @@
 
 import { kv } from "./kv.ts";
 
-const KV_KEY = "logging:muted_paths";
+export const MUTED_PATHS_KEY = "logging:muted_paths";
 const MAX_MUTED_PATHS = 100;
 
 export const logConfig = {
   async getMutedPaths(): Promise<string[]> {
-    return (await kv.get<string[]>(KV_KEY)) ?? [];
+    return (await kv.get<string[]>(MUTED_PATHS_KEY)) ?? [];
   },
 
   async addMutedPath(path: string): Promise<boolean> {
     let added = false;
-    await kv.update<string[]>(KV_KEY, (current) => {
+    await kv.update<string[]>(MUTED_PATHS_KEY, (current) => {
       const paths = current ?? [];
       if (paths.includes(path)) return paths;
       if (paths.length >= MAX_MUTED_PATHS) return paths;
@@ -37,7 +37,7 @@ export const logConfig = {
 
   async removeMutedPath(path: string): Promise<boolean> {
     let removed = false;
-    await kv.update<string[]>(KV_KEY, (current) => {
+    await kv.update<string[]>(MUTED_PATHS_KEY, (current) => {
       if (!current) return [];
       const idx = current.indexOf(path);
       if (idx === -1) return current;

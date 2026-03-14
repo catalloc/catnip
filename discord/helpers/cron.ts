@@ -7,7 +7,7 @@
 
 import { kv } from "../persistence/kv.ts";
 import { createLogger, finalizeAllLoggers, type DiscordLogger } from "../webhook/logger.ts";
-import { logConfig, isPathMuted } from "../persistence/log-config.ts";
+import { isPathMuted, MUTED_PATHS_KEY } from "../persistence/log-config.ts";
 
 export interface CronOpts {
   name: string;
@@ -24,18 +24,26 @@ export interface CronOpts {
  */
 export async function runCron(opts: CronOpts): Promise<void> {
   const logger = createLogger(opts.name);
-
-  // Check if this cron path is muted
-  if (opts.mutePath) {
-    try {
-      const mutedPaths = await logConfig.getMutedPaths();
-      logger.muted = isPathMuted(opts.mutePath, mutedPaths);
-    } catch { /* proceed unmuted */ }
-  }
-
   const start = Date.now();
   try {
-    const entries = await kv.listDue(Date.now(), opts.prefix, opts.maxDue ?? 100);
+    const maxDueLimit = opts.maxDue ?? 100;
+    let entries: Array<{ key: string; value: unknown }>;
+
+    if (opts.mutePath) {
+      // Single query: fetch muted-paths config + due items together
+      const { config, due } = await kv.listDueWithConfig<string[]>(
+        MUTED_PATHS_KEY,
+        Date.now(),
+        opts.prefix,
+        maxDueLimit,
+      );
+      try {
+        logger.muted = isPathMuted(opts.mutePath, config ?? []);
+      } catch { /* proceed unmuted */ }
+      entries = due;
+    } else {
+      entries = await kv.listDue(Date.now(), opts.prefix, maxDueLimit);
+    }
 
     const concurrency = opts.concurrency ?? 5;
     for (let i = 0; i < entries.length; i += concurrency) {
@@ -51,10 +59,9 @@ export async function runCron(opts: CronOpts): Promise<void> {
     }
 
     if (entries.length > 0) {
-      const maxDue = opts.maxDue ?? 100;
       logger.info(`Run complete: ${entries.length} item(s) processed in ${Date.now() - start}ms`);
-      if (entries.length >= maxDue) {
-        logger.warn(`Processed ${maxDue} items (max) — more may be pending for next run`);
+      if (entries.length >= maxDueLimit) {
+        logger.warn(`Processed ${maxDueLimit} items (max) — more may be pending for next run`);
       }
     }
   } catch (err) {

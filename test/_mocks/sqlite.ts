@@ -28,6 +28,32 @@ export const sqlite = {
       return { rows: [], rowsAffected: 0, columns: [] };
     }
 
+    // UNION ALL: combined config + due items query
+    if (sql.includes("UNION ALL")) {
+      const configKey = args[0] as string;
+      const now = args[1] as number;
+      const pattern = args[2] as string;
+      const prefix = unescapeLikePrefix(pattern);
+      const rows: any[][] = [];
+
+      // Config row (tag "C")
+      const configValue = store.get(configKey);
+      if (configValue !== undefined) {
+        rows.push(["C", configKey, configValue]);
+      }
+
+      // Due items (tag "D")
+      for (const [k, v] of store.entries()) {
+        if (!k.startsWith(prefix)) continue;
+        const dueAt = dueAtStore.get(k);
+        if (dueAt !== null && dueAt !== undefined && dueAt <= now) {
+          rows.push(["D", k, v]);
+        }
+      }
+
+      return { rows, rowsAffected: 0, columns: ["tag", "key", "value"] };
+    }
+
     // SELECT value FROM ... WHERE key = ?
     if (/SELECT\s+value\s+FROM/i.test(sql) && sql.includes("key = ?")) {
       const key = args[0] as string;

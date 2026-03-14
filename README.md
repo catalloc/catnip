@@ -13,6 +13,7 @@ persistence layers — all running on Val Town's serverless Deno isolates.
   - [3. Set Environment Variables](#3-set-environment-variables)
   - [4. Configure the Interactions Endpoint](#4-configure-the-interactions-endpoint)
   - [Admin Requests](#admin-requests)
+  - [4b. Bootstrap the Database](#4b-bootstrap-the-database)
   - [5. Discover Commands](#5-discover-commands)
   - [6. Register Commands](#6-register-commands)
   - [7. Invite the Bot](#7-invite-the-bot)
@@ -146,16 +147,24 @@ Settings → Advanced → Developer Mode), then right-click your name and click
 
 ### Admin Requests
 
-Steps 5, 6, and 10 require authenticated HTTP requests to your val. All admin
-endpoints use the same format:
+Steps 4b, 5, 6, and 10 require authenticated HTTP requests to your val. All
+admin endpoints use the same format:
 
 ```http
 GET https://YOUR_VAL_URL?discover=true
 Authorization: Bearer <your-admin-password>
 ```
 
-Replace the URL query parameter for each endpoint: `?discover=true`,
-`?register=true`, `?register-metadata=true`.
+Replace the URL query parameter for each endpoint: `?bootstrap=true`,
+`?discover=true`, `?register=true`, `?register-metadata=true`.
+
+### 4b. Bootstrap the Database
+
+Before the bot can handle any commands or cron jobs, the KV table must exist.
+Make an [admin request](#admin-requests) with `?bootstrap=true`.
+
+This creates the `kv_store` table and its indexes. The operation is idempotent —
+safe to run multiple times.
 
 ### 5. Discover Commands
 
@@ -357,6 +366,7 @@ The bot runs entirely on Val Town's serverless platform:
 | `/invite`                  | Bearer | Invite page with bot invite URL                                |
 | `/linked-roles`            | None   | Initiates Discord OAuth2 for linked role verification          |
 | `/linked-roles/callback`   | None   | Handles OAuth2 callback                                        |
+| `/?bootstrap=true`         | Bearer | Creates KV table and indexes (idempotent)                      |
 | `/?discover=true`          | Bearer | Scans project files and saves command/component manifest to KV |
 | `/?register=true`          | Bearer | Bulk-registers all commands with Discord                       |
 | `/?register-metadata=true` | Bearer | Pushes linked roles metadata schema to Discord                 |
@@ -730,20 +740,23 @@ Template showing webhook usage from a cron job.
 
 `discord/persistence/kv.ts` — SQLite-backed key-value store. Table:
 `kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL, due_at INTEGER)` with an
-index on `due_at`.
+index on `due_at`. The table must be created before first use via
+`bootstrapKvTable()` (exposed as `GET /?bootstrap=true`).
 
 ### Methods
 
-| Method                              | Description                                                                                                                 |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `get<T>(key)`                       | Read a value by key                                                                                                         |
-| `set(key, value, dueAt?)`           | Upsert. Optional `dueAt` (epoch ms) for time-based queries.                                                                 |
-| `delete(key)`                       | Delete by key                                                                                                               |
-| `claimDelete(key)`                  | Atomically delete and return `true` if existed. For exactly-once delivery.                                                  |
-| `list(prefix?, limit?)`             | List entries by prefix. Limit enforced in TypeScript (Val Town SQLite has no `LIMIT`).                                      |
-| `listDue(now, prefix?, limit?)`     | List entries where `due_at <= now`.                                                                                         |
-| `update<T>(key, fn, retries?)`      | Atomic read-modify-write with optimistic concurrency (CAS). Falls back to unconditional write.                              |
-| `claimUpdate<T>(key, fn, retries?)` | Like `update()` but strict claim semantics — returns `null` on missing key, null return, or exhausted retries. No fallback. |
+| Method                                            | Description                                                                                                                 |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `bootstrapKvTable()`                              | Creates the KV table and indexes (idempotent). Called via `?bootstrap=true` admin endpoint.                                 |
+| `get<T>(key)`                                     | Read a value by key                                                                                                         |
+| `set(key, value, dueAt?)`                         | Upsert. Optional `dueAt` (epoch ms) for time-based queries.                                                                 |
+| `delete(key)`                                     | Delete by key                                                                                                               |
+| `claimDelete(key)`                                | Atomically delete and return `true` if existed. For exactly-once delivery.                                                  |
+| `list(prefix?, limit?)`                           | List entries by prefix. Limit enforced in TypeScript (Val Town SQLite has no `LIMIT`).                                      |
+| `listDue(now, prefix?, limit?)`                   | List entries where `due_at <= now`.                                                                                         |
+| `listDueWithConfig<C>(configKey, now, prefix?, limit?)` | Fetch a config row and due items in a single UNION ALL query. Used by cron jobs to reduce SQLite calls.               |
+| `update<T>(key, fn, retries?)`                    | Atomic read-modify-write with optimistic concurrency (CAS). Falls back to unconditional write.                              |
+| `claimUpdate<T>(key, fn, retries?)`               | Like `update()` but strict claim semantics — returns `null` on missing key, null return, or exhausted retries. No fallback. |
 
 ### Usage
 

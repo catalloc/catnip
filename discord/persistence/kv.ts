@@ -2,7 +2,9 @@
  * discord/persistence/kv.ts
  *
  * Minimal key-value store wrapping Val Town SQLite.
- * Auto-creates the table on first use.
+ *
+ * Table must exist before use — call `bootstrapKvTable()` once via the
+ * admin `?bootstrap=true` endpoint (or any one-off setup script).
  *
  * Supports an optional `due_at` column (epoch ms) for time-based queries,
  * enabling cron jobs to fetch only due items via `listDue()` instead of
@@ -14,7 +16,6 @@ import { sqlite } from "https://esm.town/v/std/sqlite/main.ts";
 const TABLE = "kv_store";
 const SQLITE_TIMEOUT_MS = 5_000;
 const MAX_VALUE_SIZE = 512 * 1024; // 512 KB
-let initPromise: Promise<void> | null = null;
 
 /** Wraps sqlite.execute with a timeout to prevent indefinite hangs. */
 function sqliteExec(...args: Parameters<typeof sqlite.execute>): ReturnType<typeof sqlite.execute> {
@@ -27,25 +28,17 @@ function sqliteExec(...args: Parameters<typeof sqlite.execute>): ReturnType<type
   ]);
 }
 
-function ensureTable(): Promise<void> {
-  if (initPromise) return initPromise;
-  initPromise = (async () => {
-    try {
-      await sqliteExec(
-        `CREATE TABLE IF NOT EXISTS ${TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL, due_at INTEGER)`,
-      );
-      await sqliteExec(
-        `CREATE INDEX IF NOT EXISTS idx_kv_due_at ON ${TABLE} (due_at) WHERE due_at IS NOT NULL`,
-      );
-      await sqliteExec(
-        `CREATE INDEX IF NOT EXISTS idx_kv_due_at_key ON ${TABLE} (due_at, key) WHERE due_at IS NOT NULL`,
-      );
-    } catch (e) {
-      initPromise = null;
-      throw e;
-    }
-  })();
-  return initPromise;
+/** Run DDL statements to create the KV table and indexes. Idempotent. */
+export async function bootstrapKvTable(): Promise<void> {
+  await sqliteExec(
+    `CREATE TABLE IF NOT EXISTS ${TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL, due_at INTEGER)`,
+  );
+  await sqliteExec(
+    `CREATE INDEX IF NOT EXISTS idx_kv_due_at ON ${TABLE} (due_at) WHERE due_at IS NOT NULL`,
+  );
+  await sqliteExec(
+    `CREATE INDEX IF NOT EXISTS idx_kv_due_at_key ON ${TABLE} (due_at, key) WHERE due_at IS NOT NULL`,
+  );
 }
 
 function escapeLikePrefix(prefix: string): string {
@@ -63,7 +56,6 @@ function safeParse<T>(raw: string, key?: string): T | null {
 
 export const kv = {
   async get<T = unknown>(key: string): Promise<T | null> {
-    await ensureTable();
     const result = await sqliteExec({
       sql: `SELECT value FROM ${TABLE} WHERE key = ?`,
       args: [key],
@@ -73,7 +65,6 @@ export const kv = {
   },
 
   async set(key: string, value: unknown, dueAt?: number): Promise<void> {
-    await ensureTable();
     const json = JSON.stringify(value);
     if (json.length > MAX_VALUE_SIZE) {
       throw new Error(`[KV] Value too large for key "${key}": ${json.length} bytes (max ${MAX_VALUE_SIZE})`);
@@ -85,7 +76,6 @@ export const kv = {
   },
 
   async delete(key: string): Promise<void> {
-    await ensureTable();
     await sqliteExec({
       sql: `DELETE FROM ${TABLE} WHERE key = ?`,
       args: [key],
@@ -98,7 +88,6 @@ export const kv = {
    * claim mechanism so overlapping cron runs don't double-process items.
    */
   async claimDelete(key: string): Promise<boolean> {
-    await ensureTable();
     const result = await sqliteExec({
       sql: `DELETE FROM ${TABLE} WHERE key = ?`,
       args: [key],
@@ -107,7 +96,6 @@ export const kv = {
   },
 
   async list(prefix?: string, limit?: number): Promise<Array<{ key: string; value: unknown }>> {
-    await ensureTable();
     const result = prefix
       ? await sqliteExec({
           sql: `SELECT key, value FROM ${TABLE} WHERE key LIKE ? ESCAPE '\\'`,
@@ -132,7 +120,6 @@ export const kv = {
    * Optionally filtered by key prefix.
    */
   async listDue(now: number, prefix?: string, limit?: number): Promise<Array<{ key: string; value: unknown }>> {
-    await ensureTable();
     const result = prefix
       ? await sqliteExec({
           sql: `SELECT key, value FROM ${TABLE} WHERE due_at IS NOT NULL AND due_at <= ? AND key LIKE ? ESCAPE '\\'`,
@@ -160,7 +147,6 @@ export const kv = {
    * (value changed between read and write).
    */
   async update<T>(key: string, fn: (current: T | null) => T, maxRetries = 3): Promise<T> {
-    await ensureTable();
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const result = await sqliteExec({
         sql: `SELECT value FROM ${TABLE} WHERE key = ?`,
@@ -196,7 +182,6 @@ export const kv = {
    * - No unconditional fallback — guarantees exactly-once claiming
    */
   async claimUpdate<T>(key: string, fn: (current: T) => T | null, maxRetries = 3): Promise<T | null> {
-    await ensureTable();
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const result = await sqliteExec({
         sql: `SELECT value FROM ${TABLE} WHERE key = ?`,
@@ -221,6 +206,46 @@ export const kv = {
       // CAS conflict — retry
     }
     return null; // all retries exhausted
+  },
+
+  /**
+   * Fetch a config row and due items in a single query using UNION ALL.
+   * Saves one SQLite round-trip vs separate get() + listDue() calls.
+   */
+  async listDueWithConfig<C = unknown>(
+    configKey: string,
+    now: number,
+    prefix?: string,
+    limit?: number,
+  ): Promise<{ config: C | null; due: Array<{ key: string; value: unknown }> }> {
+    const likePattern = prefix ? `${escapeLikePrefix(prefix)}%` : "%";
+    const result = await sqliteExec({
+      sql: `SELECT 'C' AS tag, key, value FROM ${TABLE} WHERE key = ?`
+        + ` UNION ALL`
+        + ` SELECT 'D' AS tag, key, value FROM ${TABLE} WHERE due_at IS NOT NULL AND due_at <= ? AND key LIKE ? ESCAPE '\\'`,
+      args: [configKey, now, likePattern],
+    });
+
+    let config: C | null = null;
+    const due: Array<{ key: string; value: unknown }> = [];
+
+    for (const row of result.rows) {
+      const tag = row[0] as string;
+      const rowKey = row[1] as string;
+      const rawValue = row[2] as string;
+
+      if (tag === "C") {
+        config = safeParse<C>(rawValue, rowKey);
+      } else {
+        if (limit !== undefined && due.length >= limit) break;
+        const parsed = safeParse(rawValue, rowKey);
+        if (parsed !== null) {
+          due.push({ key: rowKey, value: parsed });
+        }
+      }
+    }
+
+    return { config, due };
   },
 };
 

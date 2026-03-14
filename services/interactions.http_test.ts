@@ -242,6 +242,25 @@ Deno.test("http: unknown GET path falls through to health check", async () => {
   assert("status" in body, "Should return health check JSON for unknown paths");
 });
 
+// --- Bootstrap endpoint ---
+
+Deno.test("http: GET ?bootstrap=true without auth returns 401", async () => {
+  const req = new Request("https://example.com/?bootstrap=true");
+  const res = await handler(req);
+  assertEquals(res.status, 401);
+});
+
+Deno.test("http: GET ?bootstrap=true with correct auth returns success", async () => {
+  const req = new Request("https://example.com/?bootstrap=true", {
+    headers: { Authorization: "Bearer test_admin_password" },
+  });
+  const res = await handler(req);
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.ok, true);
+  assert(body.message.includes("KV table"), "Should mention KV table in message");
+});
+
 Deno.test("http: POST interaction with valid signature routes correctly", async () => {
   // Type 1 = PING, which should get PONG response (type 1)
   const body = JSON.stringify({ type: 1 });

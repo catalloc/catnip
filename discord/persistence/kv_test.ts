@@ -1,7 +1,7 @@
 import "../../test/_mocks/env.ts";
 import { assertEquals, assert } from "../../test/assert.ts";
 import { sqlite } from "https://esm.town/v/std/sqlite/main.ts";
-import { kv, _internals } from "./kv.ts";
+import { kv, _internals, bootstrapKvTable } from "./kv.ts";
 
 const { safeParse } = _internals;
 
@@ -530,4 +530,71 @@ Deno.test("kv.list: entries returned in insertion order", async () => {
   assertEquals(entries[0].key, "order:a");
   assertEquals(entries[1].key, "order:b");
   assertEquals(entries[2].key, "order:c");
+});
+
+// --- listDueWithConfig ---
+
+Deno.test("kv.listDueWithConfig: returns config and due items together", async () => {
+  resetStore();
+  await kv.set("cfg:muted", ["cron:polls"]);
+  await kv.set("job:a", { data: 1 }, 100);
+  await kv.set("job:b", { data: 2 }, 200);
+  await kv.set("job:c", { data: 3 }, 9999); // not due yet
+
+  const { config, due } = await kv.listDueWithConfig<string[]>("cfg:muted", 500, "job:");
+  assertEquals(config, ["cron:polls"]);
+  assertEquals(due.length, 2);
+  const keys = due.map((e) => e.key).sort();
+  assertEquals(keys, ["job:a", "job:b"]);
+});
+
+Deno.test("kv.listDueWithConfig: missing config returns null", async () => {
+  resetStore();
+  await kv.set("job:x", { n: 1 }, 100);
+
+  const { config, due } = await kv.listDueWithConfig<string[]>("nonexistent", 500, "job:");
+  assertEquals(config, null);
+  assertEquals(due.length, 1);
+});
+
+Deno.test("kv.listDueWithConfig: respects limit on due items", async () => {
+  resetStore();
+  await kv.set("cfg:key", { setting: true });
+  await kv.set("task:1", "a", 100);
+  await kv.set("task:2", "b", 200);
+  await kv.set("task:3", "c", 300);
+
+  const { config, due } = await kv.listDueWithConfig<{ setting: boolean }>("cfg:key", 500, "task:", 2);
+  assertEquals(config, { setting: true });
+  assertEquals(due.length, 2);
+});
+
+Deno.test("kv.listDueWithConfig: prefix filtering excludes other keys", async () => {
+  resetStore();
+  await kv.set("cfg:x", ["a"]);
+  await kv.set("reminder:1", "r1", 100);
+  await kv.set("poll:1", "p1", 100);
+
+  const { config, due } = await kv.listDueWithConfig<string[]>("cfg:x", 500, "reminder:");
+  assertEquals(config, ["a"]);
+  assertEquals(due.length, 1);
+  assertEquals(due[0].key, "reminder:1");
+});
+
+Deno.test("kv.listDueWithConfig: no due items returns empty array", async () => {
+  resetStore();
+  await kv.set("cfg:y", true);
+  await kv.set("item:1", "v", 9999); // future
+
+  const { config, due } = await kv.listDueWithConfig<boolean>("cfg:y", 500, "item:");
+  assertEquals(config, true);
+  assertEquals(due.length, 0);
+});
+
+// --- bootstrapKvTable ---
+
+Deno.test("bootstrapKvTable: runs without error (idempotent)", async () => {
+  await bootstrapKvTable();
+  // Should not throw — DDL is CREATE IF NOT EXISTS
+  await bootstrapKvTable();
 });
